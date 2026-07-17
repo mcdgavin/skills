@@ -6,3 +6,15 @@ docs/
 
 # macOS Finder metadata
 .DS_Store
+
+# cultivar eval output (cwd-relative, user-owned)
+results/
+.env
+
+# Python bytecode (e.g. from script syntax checks)
+__pycache__/
+*.pyc
+
+# Local agent tooling / IDE config (not part of the base skills repo)
+.claude/
+.agents/
