@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # /// script
+# requires-python = ">=3.10"
 # dependencies = [
-#   "pinecone>=8.0.0",
+#   "pinecone==9.1.0",
 #   "typer>=0.15.0",
 #   "rich>=13.0.0",
 # ]
@@ -77,8 +78,10 @@ def main(
                 if files:
                     # Get files for this assistant
                     try:
-                        assistant_instance = pc.assistant.Assistant(assistant_name=asst.name)
-                        file_list = assistant_instance.list_files()
+                        # Models from list_assistants() carry a client back-reference,
+                        # so list_files() works on them directly and returns a list.
+                        # pc.assistants.list_files() returns a Paginator with no __len__.
+                        file_list = asst.list_files()
                         asst_data["files"] = [
                             {
                                 "name": f.name,
@@ -131,8 +134,10 @@ def main(
                 if files:
                     # Get file count for this assistant
                     try:
-                        assistant_instance = pc.assistant.Assistant(assistant_name=asst.name)
-                        file_list = assistant_instance.list_files()
+                        # Models from list_assistants() carry a client back-reference,
+                        # so list_files() works on them directly and returns a list.
+                        # pc.assistants.list_files() returns a Paginator with no __len__.
+                        file_list = asst.list_files()
                         file_count = str(len(file_list))
                     except Exception:
                         file_count = "?"
@@ -149,8 +154,10 @@ def main(
                 console.print("[bold]File Details:[/bold]\n")
                 for asst in assistants:
                     try:
-                        assistant_instance = pc.assistant.Assistant(assistant_name=asst.name)
-                        file_list = assistant_instance.list_files()
+                        # Models from list_assistants() carry a client back-reference,
+                        # so list_files() works on them directly and returns a list.
+                        # pc.assistants.list_files() returns a Paginator with no __len__.
+                        file_list = asst.list_files()
 
                         if file_list:
                             # Create a table for this assistant's files
