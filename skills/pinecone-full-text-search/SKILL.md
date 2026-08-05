@@ -267,7 +267,7 @@ schema = (
     SchemaBuilder()
     .add_string_field("body", full_text_search={"language": "en"})  # TODO: rename for your content
     .add_string_field("category", filterable=True)                   # TODO: any exact-match metadata
-    .add_integer_field("year", filterable=True)                      # TODO: any numeric filter — emits `"type": "float"` on the wire
+    .add_float_field("year", filterable=True)                        # TODO: any numeric filter — `float` is the only numeric wire type
     .build()
 )
 
@@ -323,7 +323,7 @@ for m in resp.matches:
 - **One scoring type per search request.** `score_by` accepts `text`, `query_string`, `dense_vector`, or `sparse_vector` — but a request ranks by *one* type. Multi-field BM25 is fine (pass several `text` clauses, or a single cross-field `query_string`). To combine BM25 ranking with a `dense_vector` (or `sparse_vector`) signal, restrict the dense search with a text-match `filter` operator (`$match_phrase` / `$match_all` / `$match_any`) on the lexical field, *not* by mixing types in `score_by`. The "blend a dense vector and a text clause in `score_by`" pattern is rejected by the server.
 - **Text-match filter operators are the cross-modal hinge.** `$match_phrase` (exact phrase), `$match_all` (every token, any order), `$match_any` (at least one token) are filter-side operators on `full_text_search` fields. Each takes a single string (max 128 tokens). They reuse the field's tokenizer / stemmer, compose under `$and` / `$or` / `$not`, and are the supported way to compose lexical pre-filtering with dense or sparse ranking. **Phrase slop (`"…"~N`), term boost (`^N`), and phrase prefix (`"… word"*`) are scoring-only — they live in `query_string`, not in `filter`.**
 - **Preprod backends need `additional_headers={"x-environment": "..."}` on the `Pinecone()` client.** Missing the header lands you on prod and you'll see "index not found" / empty-result symptoms that look like code bugs but aren't.
-- **`include_fields` is required on every `documents.search(...)` call.** When omitted, defaults to `[]` (`_id` + `_score` only). Pass `["*"]` for all stored fields or a list of names to project. Omitting it on some SDK builds yields `400` / `422` instead of the documented default; always pass it explicitly to avoid surprises.
+- **`include_fields` is required on every `documents.search(...)` call.** When omitted, the key is left off the request and the server returns **all** stored fields. Pass `["*"]` for all stored fields or a list of names to project. Omitting it on some SDK builds yields `400` / `422` instead of the documented default; always pass it explicitly to avoid surprises.
 - **Match score is `_score`; doc id is `_id`.** Public-preview docs return the system match score on the `_score` field so a user metadata field literally named `score` can coexist. Always prefer `_score` on read; some older SDK builds may still surface plain `score`, so for defensive code use `getattr(m, "_score", getattr(m, "score", None))`.
 - **Reserved field names: leading `_` and `$`, max 64 bytes.** `_` is for system fields (`_id`, `_score`); `$` is for filter operators. Schema validation rejects names that violate either rule. Length cap is bytes, not characters — be careful with non-ASCII names.
 - **Vector-field cardinality: at most one `dense_vector` and at most one `sparse_vector` per index** in `2026-01.alpha`. Multiple text fields are fine.
