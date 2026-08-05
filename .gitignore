@@ -6,3 +6,8 @@ docs/
 
 # macOS Finder metadata
 .DS_Store
+
+# Local secrets — never commit
+.env
+.env.*
+!.env.example
