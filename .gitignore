@@ -11,3 +11,10 @@ docs/
 .env
 .env.*
 !.env.example
+
+# build output — rendered per-target trees
+dist/
+
+# Python bytecode
+__pycache__/
+*.pyc
