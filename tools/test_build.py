@@ -27,8 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build  # noqa: E402
 
 SLUGS = ["assistant", "cli", "docs", "full-text-search", "help", "mcp", "n8n", "query", "quickstart"]
-CLAUDE = {"include": SLUGS, "cross_reference": "pinecone:{slug}", "source_tag": "claude_code_plugin"}
-CURSOR = {"include": SLUGS, "cross_reference": "pinecone-{slug}", "source_tag": "cursor_plugin"}
+CLAUDE = {"include": SLUGS, "cross_reference": "pinecone:{slug}", "dir_name": "{slug}",
+          "source_tag": "claude_code_plugin"}
+CURSOR = {"include": SLUGS, "cross_reference": "pinecone-{slug}", "dir_name": "pinecone-{slug}",
+          "source_tag": "cursor_plugin"}
 
 
 def xref(text, manifest=CLAUDE):
@@ -77,6 +79,34 @@ class TestCrossReferencesLeftAlone:
     ])
     def test_untouched(self, text):
         assert xref(text) == text
+
+
+class TestSkillPaths:
+    """`pinecone-<slug>/` inside a path follows dir_name, not cross_reference.
+    Rendering `../pinecone:assistant/scripts/create.py` shipped a path that cannot
+    exist; rendering `../pinecone-assistant/` for Claude ships one that no longer
+    does, because the plugin renames the directory."""
+
+    @pytest.mark.parametrize("before,after", [
+        ("uv run ../pinecone-assistant/scripts/create.py",
+         "uv run ../assistant/scripts/create.py"),
+        ("see pinecone-full-text-search/references/querying.md",
+         "see full-text-search/references/querying.md"),
+        ("skills/pinecone-quickstart/SKILL.md", "skills/quickstart/SKILL.md"),
+    ])
+    def test_claude_path_follows_dir_name(self, before, after):
+        assert xref(before) == after
+
+    def test_cursor_path_is_a_noop(self):
+        s = "uv run ../pinecone-assistant/scripts/create.py"
+        assert xref(s, CURSOR) == s
+
+    def test_non_slug_path_segment_untouched(self):
+        s = "claude/skills/pinecone-fts-index/scripts/ingest.py"
+        assert xref(s) == s
+
+    def test_trailing_slash_alone_is_still_a_path(self):
+        assert xref("the pinecone-cli/ directory") == "the cli/ directory"
 
 
 class TestIdentityTarget:

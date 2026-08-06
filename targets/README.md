@@ -57,6 +57,37 @@ The slug list is the guard. Anything not in `include` is left alone. The build
 should fail loudly if a rewrite count changes unexpectedly between runs rather
 than silently corrupting a file.
 
+## Paths are not cross-references
+
+A slug followed by `/` is a directory in a filesystem path, so it follows
+`dir_name`, not `cross_reference`. The two rules are mutually exclusive: the
+cross-reference pattern rejects an adjacent `/` on either side.
+
+| Text | claude-code | cursor |
+|---|---|---|
+| `uv run ../pinecone-assistant/scripts/create.py` | `../assistant/scripts/…` | unchanged |
+| `` `pinecone-assistant` `` (prose) | `pinecone:assistant` | unchanged |
+
+This distinction is not theoretical. `pinecone-quickstart/SKILL.md` carries three
+such paths, and running them through `cross_reference` emitted
+`../pinecone:assistant/scripts/create.py` — a path that cannot exist on any
+filesystem. It was caught by `tools/reconcile.py`, not by unit tests.
+
+## Reconciling against the live repos
+
+```bash
+uv run tools/build.py --all
+uv run tools/reconcile.py --target cursor --clone ../plugin-cursor --diff
+```
+
+`reconcile.py` buckets the difference three ways — `MISSING` (sync adds),
+`EXTRA` (`rsync --delete` removes), `DIFFERS` (sync overwrites) — and exits
+nonzero while any remain. Before the first sync it is a migration report; after,
+a standing assertion that published content still matches what base renders.
+
+`EXTRA` and `DIFFERS` both need reading rather than trusting. A target can be
+legitimately *ahead* of base: `create.py` in the Claude plugin was, for months.
+
 ## Verification the build owes us
 
 1. **Cursor is byte-identical to base except `source_tag`.** Cursor's manifest is

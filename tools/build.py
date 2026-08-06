@@ -72,6 +72,11 @@ def available_targets() -> list[str]:
 # transforms — each is a pure str -> str
 # --------------------------------------------------------------------------- #
 
+def slug_alternation(slugs: list[str]) -> str:
+    """Longest slug first, so `full-text-search` wins over any shorter alternative."""
+    return "|".join(re.escape(s) for s in sorted(slugs, key=len, reverse=True))
+
+
 def cross_reference_pattern(slugs: list[str]) -> re.Pattern[str]:
     """Match `pinecone-<slug>` only for known slugs, and only when it stands alone.
 
@@ -85,22 +90,44 @@ def cross_reference_pattern(slugs: list[str]) -> re.Pattern[str]:
     either side fixes that, and also protects trailing forms like
     `pinecone-cli-tool`.
 
-    Longest slug first so `full-text-search` wins over any shorter alternative.
+    An adjacent `/` is rejected for a different reason: that is a path segment, not
+    prose, and paths follow `dir_name` rather than `cross_reference`. See
+    `rewrite_skill_paths`.
     """
-    alts = "|".join(re.escape(s) for s in sorted(slugs, key=len, reverse=True))
-    return re.compile(rf"(?<![\w-]){re.escape(BASE_PREFIX)}(?:{alts})(?![\w-])")
+    return re.compile(rf"(?<![\w/-]){re.escape(BASE_PREFIX)}(?:{slug_alternation(slugs)})(?![\w/-])")
+
+
+def skill_path_pattern(slugs: list[str]) -> re.Pattern[str]:
+    """Match `pinecone-<slug>/` — a skill directory used as a path segment."""
+    return re.compile(rf"(?<![\w-]){re.escape(BASE_PREFIX)}(?:{slug_alternation(slugs)})(?=/)")
+
+
+def rewrite_skill_paths(text: str, manifest: dict[str, Any]) -> str:
+    """Rewrite skill directories that appear inside filesystem paths.
+
+    `pinecone-quickstart/SKILL.md` tells the user to run
+    `uv run ../pinecone-assistant/scripts/create.py`. That is a real path to a
+    sibling directory, so it has to track `dir_name`: the Claude plugin renames the
+    directory to `assistant/`, and a build that emitted `../pinecone-assistant/`
+    there would hand the user a path that does not exist. Feeding it through
+    `cross_reference` instead is worse — it produced `../pinecone:assistant/`.
+    """
+    def repl(match: re.Match[str]) -> str:
+        return manifest["dir_name"].format(slug=match.group(0)[len(BASE_PREFIX):])
+
+    return skill_path_pattern(manifest["include"]).sub(repl, text)
 
 
 def rewrite_cross_references(text: str, manifest: dict[str, Any]) -> str:
-    slugs = manifest["include"]
+    """Rewrite prose references to other skills. Paths are handled first and are
+    excluded by the pattern's lookarounds, so the two rules cannot both fire."""
+    text = rewrite_skill_paths(text, manifest)
     template = manifest["cross_reference"]
-    pattern = cross_reference_pattern(slugs)
 
     def repl(match: re.Match[str]) -> str:
-        slug = match.group(0)[len(BASE_PREFIX):]
-        return template.format(slug=slug)
+        return template.format(slug=match.group(0)[len(BASE_PREFIX):])
 
-    return pattern.sub(repl, text)
+    return cross_reference_pattern(manifest["include"]).sub(repl, text)
 
 
 def rewrite_source_tag(text: str, manifest: dict[str, Any]) -> str:
