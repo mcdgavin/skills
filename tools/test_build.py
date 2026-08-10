@@ -130,6 +130,55 @@ class TestSourceTag:
         assert build.rewrite_source_tag(line, CURSOR) == line
 
 
+class TestSnippets:
+    """Snippets carry the wording that really does differ per plugin. They replaced
+    an agent that inferred the same difference and answered differently each run."""
+
+    CL = dict(CLAUDE, snippets={"api_key_setup": "export it in your shell"})
+    CU = dict(CURSOR, snippets={"api_key_setup": "add it to a `.env` file"})
+
+    def test_fills_per_target(self):
+        src = "Set the key: <<api_key_setup>>\n"
+        assert build.fill_snippets(src, self.CL, Path("x")) == "Set the key: export it in your shell\n"
+        assert build.fill_snippets(src, self.CU, Path("x")) == "Set the key: add it to a `.env` file\n"
+
+    def test_multiple_markers_in_one_file(self):
+        m = dict(self.CL, snippets={"a": "AAA", "b": "BBB"})
+        assert build.fill_snippets("<<a>> then <<b>>", m, Path("x")) == "AAA then BBB"
+
+    def test_undefined_marker_is_an_error(self):
+        """Publishing a skill with `<<api_key_setup>>` in the text is worse than
+        either wording, so this must fail rather than pass the marker through."""
+        with pytest.raises(ValueError, match="no snippet 'mystery'"):
+            build.fill_snippets("<<mystery>>", self.CL, Path("x"))
+
+    def test_trailing_newline_is_stripped(self):
+        m = dict(self.CL, snippets={"a": "one\ntwo\n"})
+        assert build.fill_snippets("<<a>>\nafter", m, Path("x")) == "one\ntwo\nafter"
+
+    def test_n8n_expressions_are_not_markers(self):
+        """pinecone-n8n/SKILL.md is full of `={{ $json.urls }}`. Nothing may touch it."""
+        src = '"url": "={{ $json.urls }}",\n'
+        assert build.fill_snippets(src, self.CL, Path("x")) == src
+
+    def test_no_marker_no_snippets_defined_is_fine(self):
+        assert build.fill_snippets("plain text", CLAUDE, Path("x")) == "plain text"
+
+    def test_snippet_content_goes_through_the_other_rules(self):
+        """Snippets fill first on purpose, so their text passes through the same
+        guards as base content rather than around them."""
+        m = dict(CLAUDE, skill_name="pinecone:{slug}", frontmatter={},
+                 snippets={"hint": "see pinecone-cli and ../pinecone-assistant/scripts/x.py"})
+        out = build.render_file(Path("references/a.md"), "<<hint>>\n", "docs", m, Path("x"))
+        assert out == "see pinecone:cli and ../assistant/scripts/x.py\n"
+
+    def test_identity_target_snippet_is_not_retargeted(self):
+        m = dict(CURSOR, skill_name="pinecone-{slug}", frontmatter={},
+                 snippets={"hint": "see pinecone-cli and ../pinecone-assistant/scripts/x.py"})
+        out = build.render_file(Path("references/a.md"), "<<hint>>\n", "docs", m, Path("x"))
+        assert out == "see pinecone-cli and ../pinecone-assistant/scripts/x.py\n"
+
+
 class TestIdeSource:
     """The real bug this rule fixes: base hardcoded `claude-code-plugin`, so a sync
     would have stamped every Cursor-created assistant as Claude Code."""

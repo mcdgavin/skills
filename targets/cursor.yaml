@@ -42,3 +42,39 @@ include:
 # Cursor adds no per-skill frontmatter. Verified: 0 of 9 live skills carry
 # allowed-tools.
 frontmatter: {}
+
+# Per-target wording for the `<<name>>` markers in base. See targets/README.md.
+#
+# Two things drive these. The bundled MCP config reads `.env` through Cursor's
+# `envFile` field, which is worth saying plainly. And Cursor declares no slash
+# commands, so the scripts name the commands you can actually run — the live
+# plugin advertised `/pinecone:assistant-chat` and friends, none of which exist.
+snippets:
+  api_key_setup: |
+    - Add `PINECONE_API_KEY=your-key` to a `.env` file at your workspace root. The
+      bundled MCP config reads it through Cursor's `envFile` field.
+    - For scripts, either `export PINECONE_API_KEY="your-key"` in your terminal or
+      run them with `uv run --env-file .env scripts/...`.
+
+  next_after_create: |
+    1. Upload files: [cyan]uv run upload.py --assistant {name} --source PATH[/cyan]
+    2. Chat: [cyan]uv run chat.py --assistant {name} --message "YOUR QUESTION"[/cyan]
+    3. Get context: [cyan]uv run context.py --assistant {name} --query "SEARCH TEXT"[/cyan]
+
+  next_create_first: "[cyan]uv run create.py --name ASSISTANT_NAME[/cyan]"
+
+  next_commands: |
+    • List with files: [cyan]uv run list.py --files[/cyan]
+    • Chat: [cyan]uv run chat.py --assistant NAME --message "YOUR QUESTION"[/cyan]
+    • Upload: [cyan]uv run upload.py --assistant NAME --source PATH[/cyan]
+    • Context: [cyan]uv run context.py --assistant NAME --query "SEARCH TEXT"[/cyan]
+
+  next_after_upload: |
+    • Chat: [cyan]uv run chat.py --assistant {assistant} --message "YOUR QUESTION"[/cyan]
+    • Context: [cyan]uv run context.py --assistant {assistant} --query "SEARCH TEXT"[/cyan]
+
+  next_after_context: |
+    • Ask a question: [cyan]uv run chat.py --assistant {assistant} --message "YOUR QUESTION"[/cyan]
+    • Upload more files: [cyan]uv run upload.py --assistant {assistant} --source PATH[/cyan]
+
+  next_chat_fallback: 'uv run chat.py --assistant {assistant} --message \"{query}\"'

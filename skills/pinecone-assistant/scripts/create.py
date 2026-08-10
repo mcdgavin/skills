@@ -112,9 +112,7 @@ export PINECONE_ASSISTANT_HOST="{host}"
 
         # Next steps
         next_steps = f"""[bold]Next steps:[/bold]
-1. Upload files: [cyan]uv run upload.py --assistant {name} --source PATH[/cyan]
-2. Chat: [cyan]uv run chat.py --assistant {name} --message "YOUR QUESTION"[/cyan]
-3. Get context: [cyan]uv run context.py --assistant {name} --query "SEARCH TEXT"[/cyan]"""
+<<next_after_create>>"""
 
         console.print(Panel(next_steps, title="What's Next?", border_style="green"))
 

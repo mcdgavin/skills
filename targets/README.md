@@ -17,6 +17,8 @@ three agents and three different answers to the same question.
 | `skill_name` | Template for the `name:` frontmatter value. |
 | `cross_reference` | Template for how prose refers to *another* skill. See the rule below. |
 | `source_tag` | Replaces `pinecone_skills` in the `source_tag=` argument inside `.py` files. |
+| `ide_source` | Replaces `pinecone-skills` in the `agentic-ide-source` metadata value inside `.py` files. |
+| `snippets` | Wording for the `<<name>>` markers in base. See "Snippets" below. |
 | `include` | Slugs to render. Explicit, so adding a skill to base does not silently publish it everywhere. |
 | `frontmatter` | Per-slug keys this target adds. Emitted after `argument-hint`. |
 
@@ -72,6 +74,62 @@ This distinction is not theoretical. `pinecone-quickstart/SKILL.md` carries thre
 such paths, and running them through `cross_reference` emitted
 `../pinecone:assistant/scripts/create.py` — a path that cannot exist on any
 filesystem. It was caught by `tools/reconcile.py`, not by unit tests.
+
+## Snippets
+
+Some things really do differ per plugin, and base cannot state both. Cursor reads
+`.env` through its own MCP config; Claude Code reads your shell. Claude Code has
+working slash commands; Cursor declares none. Before this, an agent ran inside each
+plugin repo and worked the difference out, giving a slightly different answer every
+run. A snippet states it once.
+
+Base leaves a marker:
+
+```markdown
+- **API key** — create one in the console, then make it available:
+  <<api_key_setup>>
+```
+
+Each manifest fills it:
+
+```yaml
+snippets:
+  api_key_setup: |
+    - Add `PINECONE_API_KEY=your-key` to a `.env` file at your workspace root. The
+      bundled MCP config reads it through Cursor's `envFile` field.
+```
+
+### Rules
+
+- Marker syntax is `<<lower_snake_name>>`. **Not** `{{ name }}` — `pinecone-n8n`
+  is full of real n8n expressions like `={{ $json.urls }}`, and a marker shaped
+  like one would confuse the build and the next person to edit that file.
+- Every marker in base must be defined by **every** target, or the build fails.
+  A skill published with `<<api_key_setup>>` visible in the text is worse than
+  either wording.
+- Every defined snippet must be used by some included skill, or the build fails.
+  This is the half that is easy to forget: stale wording sitting in a manifest
+  looks authoritative.
+- Snippets fill **first**, before path and cross-reference rewriting. So snippet
+  text passes through the same guards as base content — write `pinecone-cli` in a
+  snippet and it retargets correctly.
+- Trailing newlines are stripped, so `|` block scalars sit cleanly inline.
+
+### Writing snippets that land inside Python
+
+Markers in `.py` files sit inside string literals. A snippet that ends with a `"`
+directly before a closing `"""` produces a file that cannot be imported.
+
+`check_python_syntax` catches this — every rendered `.py` must parse. Do not rely
+on review for it. The current script snippets avoid decorative quotes for this
+reason, which is a small, deliberate cosmetic difference from what the Claude
+plugin shipped by hand.
+
+### When to add one
+
+Only where the plugins truly differ. Five of nine skills need no snippet at all,
+and a blank in the middle of a sentence is cheaper than forking a file. If the same
+wording is right everywhere, put it in base.
 
 ## Reconciling against the live repos
 

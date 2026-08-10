@@ -21,6 +21,7 @@ See targets/README.md for the manifest schema and the transform rules.
 
 from __future__ import annotations
 
+import ast
 import filecmp
 import re
 import shutil
@@ -46,6 +47,12 @@ NEUTRAL_SOURCE_TAG = "pinecone_skills"
 # labelled Cursor-created assistants as Claude Code.
 IDE_SOURCE_KEY = "agentic-ide-source"
 NEUTRAL_IDE_SOURCE = "pinecone-skills"
+
+# Snippet markers. `<<name>>` and not `{{ name }}`: pinecone-n8n/SKILL.md is full of
+# real n8n expressions like `={{ $json.urls }}`, and a marker that looks like one
+# would confuse both the build and whoever edits that file next. `<<` appears
+# nowhere in base.
+SNIPPET_RE = re.compile(r"<<([a-z][a-z0-9_]*)>>")
 
 # Frontmatter keys, in the order the build must emit them. `allowed-tools` comes
 # from the manifest and is appended last; the rest pass through from base.
@@ -169,6 +176,32 @@ def rewrite_ide_source(text: str, manifest: dict[str, Any], path: Path) -> str:
     return IDE_SOURCE_RE.sub(repl, text)
 
 
+def fill_snippets(text: str, manifest: dict[str, Any], path: Path) -> str:
+    """Replace `<<name>>` with the target's wording for that name.
+
+    This is the declared replacement for the agent that used to rewrite skills
+    inside each plugin repo. Some things really do differ per plugin — Cursor reads
+    `.env` through its own MCP config, Claude Code has working slash commands — and
+    base cannot state both. An agent inferred the difference and gave a slightly
+    different answer every run. A snippet states it once, in a file you can review.
+
+    Undefined names are a hard error. A skill published with `<<api_key_setup>>`
+    sitting in the text would be worse than either wording.
+    """
+    snippets = manifest.get("snippets") or {}
+
+    def repl(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name not in snippets:
+            raise ValueError(
+                f"{path}: no snippet {name!r} for this target. Define it in "
+                f"targets/*.yaml for every target, or remove the marker from base."
+            )
+        return str(snippets[name]).strip()
+
+    return SNIPPET_RE.sub(repl, text)
+
+
 def split_frontmatter(text: str, path: Path) -> tuple[dict[str, str], str]:
     """Return (frontmatter dict, body). Preserves value strings verbatim."""
     if not text.startswith("---\n"):
@@ -218,6 +251,10 @@ def render_skill_md(text: str, slug: str, manifest: dict[str, Any], path: Path) 
 
 
 def render_file(rel: Path, text: str, slug: str, manifest: dict[str, Any], path: Path) -> str:
+    # Snippets first, deliberately. Their text can contain skill names and paths, so
+    # filling them before the other rules run means snippet content passes through
+    # the same guards as base content instead of going around them.
+    text = fill_snippets(text, manifest, path)
     if rel.name == "SKILL.md":
         return render_skill_md(text, slug, manifest, path)
     if rel.suffix == ".py":
@@ -303,7 +340,11 @@ def check_identity_target(target: str, out_root: Path | None = None) -> list[str
             if not other.exists():
                 problems.append(f"{target}: missing {rel} under {slug}")
                 continue
-            a = path.read_text().splitlines()
+            # Fill snippets on the base side too. Snippets are a declared per-target
+            # difference, and a multi-line one would otherwise trip the line-count
+            # comparison below. What this still asserts is the valuable part: no
+            # *other* rule changed anything for an identity target.
+            a = fill_snippets(path.read_text(), manifest, path).splitlines()
             b = other.read_text().splitlines()
             if len(a) != len(b):
                 problems.append(f"{target}: line count differs for {slug}/{rel}")
@@ -333,6 +374,56 @@ def check_no_neutral_tags(target: str, out_root: Path | None = None) -> list[str
             problems.append(f"{target}: {p.relative_to(out)} still contains {NEUTRAL_SOURCE_TAG}:")
         if NEUTRAL_IDE_SOURCE in text:
             problems.append(f"{target}: {p.relative_to(out)} still contains {NEUTRAL_IDE_SOURCE}")
+    return problems
+
+
+def check_python_syntax(target: str, out_root: Path | None = None) -> list[str]:
+    """Every rendered .py file must parse.
+
+    Snippets land inside string literals, so a snippet that ends with a quote next
+    to a closing triple quote produces a file that cannot be imported. Nothing else
+    in the build would notice: the bytes look fine and only Python objects. Users
+    would find it. This check finds it first.
+    """
+    manifest = load_manifest(target)
+    out = (out_root or DIST_DIR) / target / manifest["skills_path"]
+    problems = []
+    for path in sorted(out.rglob("*.py")):
+        try:
+            ast.parse(path.read_text())
+        except SyntaxError as exc:
+            problems.append(f"{target}: {path.relative_to(out)} does not parse — {exc}")
+    return problems
+
+
+def check_snippets(target: str) -> list[str]:
+    """Snippet definitions and markers must agree, in both directions.
+
+    Missing definitions already fail during render. This catches the quieter half:
+    a snippet defined in a manifest that base no longer references. Left unchecked,
+    stale wording sits in the manifest looking authoritative for months.
+    """
+    manifest = load_manifest(target)
+    defined = set(manifest.get("snippets") or {})
+    referenced: set[str] = set()
+    for slug in manifest["include"]:
+        src = SKILLS_DIR / f"{BASE_PREFIX}{slug}"
+        for path in sorted(src.rglob("*")):
+            if path.is_dir() or "__pycache__" in path.parts:
+                continue
+            try:
+                referenced |= set(SNIPPET_RE.findall(path.read_text()))
+            except UnicodeDecodeError:
+                continue
+
+    problems = [
+        f"{target}: snippet {name!r} is defined but no included skill uses <<{name}>>"
+        for name in sorted(defined - referenced)
+    ]
+    problems += [
+        f"{target}: base uses <<{name}>> but targets/{target}.yaml does not define it"
+        for name in sorted(referenced - defined)
+    ]
     return problems
 
 
@@ -374,6 +465,8 @@ def main(
         typer.echo(f"built {t}: {n} files -> {path.relative_to(REPO) if not out_root else path}")
         problems += check_no_neutral_tags(t, out_root)
         problems += check_identity_target(t, out_root)
+        problems += check_snippets(t)
+        problems += check_python_syntax(t, out_root)
         if check:
             import tempfile
             with tempfile.TemporaryDirectory() as tmp:
