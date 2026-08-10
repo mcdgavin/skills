@@ -1,13 +1,9 @@
 name: Sync Skills to Plugin Repos
-# Two sync modes:
-#   push → incremental: diffs HEAD~1..HEAD, syncs only changed skill files to ALL target repos
-#   dispatch → full: syncs every file under skills/ to a chosen repo (or all repos)
+# Dispatch-only, full sync: copies every file under skills/ to a chosen repo
+# (or all repos). Incremental push-triggered sync was removed — it diffed
+# HEAD~1..HEAD under fetch-depth 2 and silently dropped older commits.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'skills/**'
   workflow_dispatch:
     inputs:
       target_repo:
@@ -17,8 +13,6 @@ on:
           - all
           - pinecone-io/pinecone-claude-code-plugin
           - pinecone-io/pinecone-cursor-plugin
-          - pinecone-io/gemini-cli-extension
-          - pinecone-io/kiro-powers
         default: all
 
 jobs:
@@ -31,10 +25,6 @@ jobs:
           - repo: 'pinecone-io/pinecone-claude-code-plugin'
             skills_dir: 'skills'
           - repo: 'pinecone-io/pinecone-cursor-plugin'
-            skills_dir: 'skills'
-          - repo: 'pinecone-io/gemini-cli-extension'
-            skills_dir: 'skills'
-          - repo: 'pinecone-io/kiro-powers'
             skills_dir: 'skills'
 
     name: Sync → ${{ matrix.target.repo }}
