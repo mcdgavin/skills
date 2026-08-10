@@ -4,7 +4,11 @@ This is the **base skills repo**. Skills here must work across any agent environ
 
 ## Generalization Rules
 
-**No IDE-specific tool calls.** Don't use `AskUserQuestion` or any tool that isn't universally available. Use plain prose: "ask the user which they prefer."
+**No IDE-specific tool calls in base.** Don't name `AskUserQuestion` or any other tool that isn't universally available. Write plain prose: "ask the user which they prefer."
+
+**Where a tool really is the right answer for one target, use a snippet instead of dropping the idea.** Base leaves a `<<marker>>`; each file in `targets/` supplies its own wording. That is how `AskUserQuestion` reaches the Claude Code plugin while Cursor gets prose — see `targets/README.md` → Snippets. Earlier the rule was a flat ban, which quietly cost the Claude plugin a working feature at 15 sites.
+
+Add a snippet only where the targets truly differ. If one wording is right everywhere, it belongs in base.
 
 **Never assume `PINECONE_API_KEY` is inherited.** Always check first. If not set:
 - Tell the user to `export PINECONE_API_KEY=...` (terminal envs)

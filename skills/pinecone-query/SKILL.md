@@ -8,6 +8,8 @@ argument-hint: query [q] index [indexName] namespace [ns] topK [k] reranker [rer
 
 Search for records in Pinecone integrated indexes using natural language text queries via the Pinecone MCP server.
 
+<<clarify_style>>
+
 ## What is this skill for?
 
 This skill provides a simple way to query **integrated indexes** (indexes with built-in Pinecone embedding models) using text queries. The MCP server automatically converts your text into embeddings and searches the index.

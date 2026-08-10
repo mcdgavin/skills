@@ -8,6 +8,8 @@ description: Interactive Pinecone quickstart for new developers. Choose between 
 Welcome! This skill walks you through your first Pinecone experience using the tools available to you. In this quickstart,
 you will learn how to do a simple form of semantic search over some example data.
 
+<<clarify_style>>
+
 ## Prerequisites
 
 Before starting either path, verify the API key works by calling `list-indexes` via the Pinecone MCP. If it succeeds, proceed. If it fails, ask the user to set their key:

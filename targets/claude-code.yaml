@@ -97,3 +97,10 @@ snippets:
     • Upload more files: [cyan]/pinecone:assistant[/cyan] — upload files from [path] to {assistant}
 
   next_chat_fallback: '/pinecone:assistant — ask {assistant} about \"{query}\"'
+
+  # This target has a real tool for structured choices, so it says so once here
+  # rather than at each of the fifteen places a skill asks the user something.
+  clarify_style: >
+    Whenever this skill asks the user to choose between options, confirm a
+    destructive step, or pick from a list, use the AskUserQuestion tool rather
+    than plain prose. Fall back to prose only if the tool is unavailable.

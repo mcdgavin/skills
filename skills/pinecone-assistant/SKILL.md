@@ -10,6 +10,8 @@ Pinecone Assistant is a fully managed RAG service. Upload documents, ask questio
 > All scripts are in `scripts/` relative to this skill directory.
 > Run with: `uv run scripts/script_name.py [arguments]`
 
+<<clarify_style>>
+
 ## Operations
 
 | What to do | Script | Key args |

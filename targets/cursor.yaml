@@ -78,3 +78,9 @@ snippets:
     • Upload more files: [cyan]uv run upload.py --assistant {assistant} --source PATH[/cyan]
 
   next_chat_fallback: 'uv run chat.py --assistant {assistant} --message \"{query}\"'
+
+  # No structured-choice tool here, so say what to do instead.
+  clarify_style: >
+    Whenever this skill asks the user to choose between options, confirm a
+    destructive step, or pick from a list, ask in plain prose, list the options,
+    and wait for their answer before continuing.
