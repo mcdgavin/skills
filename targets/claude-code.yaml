@@ -1,0 +1,60 @@
+# Build manifest — Claude Code plugin
+#
+# Consumed by tools/build.py, which renders skills/ -> dist/claude-code/.
+# Every value here was derived from the observed state of the live target repo
+# on 2026-08-05, not from a design document. See targets/README.md for the
+# field reference.
+
+repo: pinecone-io/pinecone-claude-code-plugin
+skills_path: skills
+
+# Directory rename: base `skills/pinecone-assistant/` -> `skills/assistant/`.
+# The plugin namespaces skills via `name:`, so the prefix is redundant on disk.
+dir_name: "{slug}"
+
+# Frontmatter `name:`. Claude Code uses `<plugin>:<skill>` for slash invocation.
+skill_name: "pinecone:{slug}"
+
+# How this target writes a reference to another skill in prose. Base authors
+# these as `pinecone-<slug>`; see README.md for what counts as a reference —
+# a blanket substitution corrupts URLs and index names.
+cross_reference: "pinecone:{slug}"
+
+# Replaces `pinecone_skills:` in the source_tag argument inside .py files.
+source_tag: claude_code_plugin
+
+include:
+  - assistant
+  - cli
+  - docs
+  - full-text-search
+  - help
+  - mcp
+  - n8n
+  - query
+  - quickstart
+
+# Per-skill frontmatter added by this target only. Values are verbatim from the
+# live plugin. Emitted last in the frontmatter block, after argument-hint.
+#
+# Base carries no allowed-tools: the key is Claude-Code-specific and was removed
+# from pinecone-n8n as part of the neutrality pass.
+frontmatter:
+  assistant:
+    allowed-tools: "Bash, Read"
+  cli:
+    allowed-tools: "Bash, Read"
+  docs:
+    allowed-tools: "Read, WebFetch"
+  full-text-search:
+    allowed-tools: "Bash, Read"
+  help:
+    allowed-tools: "Skill, Bash, Read"
+  mcp:
+    allowed-tools: "Read"
+  n8n:
+    allowed-tools: "Write, Read"
+  query:
+    allowed-tools: "Bash, Read"
+  quickstart:
+    allowed-tools: "Skill(pinecone:assistant *), Bash, Read"

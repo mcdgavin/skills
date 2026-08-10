@@ -1,0 +1,39 @@
+# Build manifest — Cursor plugin
+#
+# Consumed by tools/build.py, which renders skills/ -> dist/cursor/.
+# Derived from the observed state of the live target repo on 2026-08-05.
+#
+# This target is an identity transform on directory names and on `name:`, and
+# adds no frontmatter. The only difference from base is source_tag. That makes
+# it the cheapest target to prove the pipeline against: build output should be
+# byte-identical to base except for the source_tag line, and the build asserts
+# exactly that (see targets/README.md).
+
+repo: pinecone-io/pinecone-cursor-plugin
+skills_path: skills
+
+# Identical to base — Cursor has no plugin namespace, so the prefix stays on disk.
+dir_name: "pinecone-{slug}"
+
+# Identical to base.
+skill_name: "pinecone-{slug}"
+
+# Identical to base, so cross-reference rewriting is a no-op here.
+cross_reference: "pinecone-{slug}"
+
+source_tag: cursor_plugin
+
+include:
+  - assistant
+  - cli
+  - docs
+  - full-text-search
+  - help
+  - mcp
+  - n8n
+  - query
+  - quickstart
+
+# Cursor adds no per-skill frontmatter. Verified: 0 of 9 live skills carry
+# allowed-tools.
+frontmatter: {}
