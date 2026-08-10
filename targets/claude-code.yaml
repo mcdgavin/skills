@@ -104,3 +104,10 @@ snippets:
     Whenever this skill asks the user to choose between options, confirm a
     destructive step, or pick from a list, use the AskUserQuestion tool rather
     than plain prose. Fall back to prose only if the tool is unavailable.
+
+  # Claude Code exposes each skill as `/pinecone:<slug>`. The live plugin never said
+  # so; Cursor's copy did, which is where these two lines come from.
+  invoke_any_skill: >
+    Invoke any skill from chat with `/pinecone:<skill-name>` — for example
+    `/pinecone:quickstart` or `/pinecone:n8n`.
+  invoke_this_skill: "Invoke this skill from chat with `/pinecone:n8n`."

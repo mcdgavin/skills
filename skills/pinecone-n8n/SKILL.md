@@ -5,6 +5,8 @@ description: Build n8n workflows using the Pinecone Assistant node or Pinecone V
 
 # Pinecone n8n Workflow Skill
 
+<<invoke_this_skill>>
+
 This skill helps you build n8n workflows with Pinecone nodes following best practices. It covers two Pinecone nodes:
 - **Pinecone Assistant** (`@pinecone-database/n8n-nodes-pinecone-assistant`) — recommended for most use cases
 - **Pinecone Vector Store** (`@n8n/n8n-nodes-langchain.vectorStorePinecone`) — for advanced control

@@ -84,3 +84,11 @@ snippets:
     Whenever this skill asks the user to choose between options, confirm a
     destructive step, or pick from a list, ask in plain prose, list the options,
     and wait for their answer before continuing.
+
+  # Cursor exposes each skill under its own name, `pinecone-<slug>`. Confirmed in
+  # Cursor 2026-08-10. Distinct from the `/pinecone:assistant-chat` commands the
+  # scripts used to advertise, which were never declared anywhere and did not exist.
+  invoke_any_skill: >
+    Invoke any skill from Cursor Agent chat with `/pinecone-<skill-name>` — for
+    example `/pinecone-quickstart` or `/pinecone-n8n`.
+  invoke_this_skill: "Invoke this skill from Cursor Agent chat with `/pinecone-n8n`."

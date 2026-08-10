@@ -9,6 +9,8 @@ Pinecone is the leading vector database for building accurate and performant AI 
 
 Here's everything you need to get started and a summary of all available skills.
 
+<<invoke_any_skill>>
+
 ---
 
 ## What You Need
