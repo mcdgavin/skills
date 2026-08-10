@@ -23,6 +23,11 @@ cross_reference: "pinecone-{slug}"
 
 source_tag: cursor_plugin
 
+# Replaces `pinecone-skills` in the `agentic-ide-source` metadata value that
+# pinecone-assistant/scripts/create.py stamps on each assistant it creates.
+# Same shape as source_tag, different consumer.
+ide_source: cursor-plugin
+
 include:
   - assistant
   - cli

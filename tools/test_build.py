@@ -28,9 +28,9 @@ import build  # noqa: E402
 
 SLUGS = ["assistant", "cli", "docs", "full-text-search", "help", "mcp", "n8n", "query", "quickstart"]
 CLAUDE = {"include": SLUGS, "cross_reference": "pinecone:{slug}", "dir_name": "{slug}",
-          "source_tag": "claude_code_plugin"}
+          "source_tag": "claude_code_plugin", "ide_source": "claude-code-plugin"}
 CURSOR = {"include": SLUGS, "cross_reference": "pinecone-{slug}", "dir_name": "pinecone-{slug}",
-          "source_tag": "cursor_plugin"}
+          "source_tag": "cursor_plugin", "ide_source": "cursor-plugin"}
 
 
 def xref(text, manifest=CLAUDE):
@@ -128,6 +128,47 @@ class TestSourceTag:
     def test_leaves_an_already_targeted_tag_alone(self):
         line = 'source_tag="claude_code_plugin:assistant"'
         assert build.rewrite_source_tag(line, CURSOR) == line
+
+
+class TestIdeSource:
+    """The real bug this rule fixes: base hardcoded `claude-code-plugin`, so a sync
+    would have stamped every Cursor-created assistant as Claude Code."""
+
+    LINE = 'metadata={"agentic-ide-source":"pinecone-skills"}'
+
+    def test_retargets_for_claude(self):
+        out = build.rewrite_ide_source(self.LINE, CLAUDE, Path("x"))
+        assert out == 'metadata={"agentic-ide-source":"claude-code-plugin"}'
+
+    def test_retargets_for_cursor(self):
+        out = build.rewrite_ide_source(self.LINE, CURSOR, Path("x"))
+        assert out == 'metadata={"agentic-ide-source":"cursor-plugin"}'
+
+    def test_tolerates_spacing(self):
+        line = 'metadata={"agentic-ide-source": "pinecone-skills"}'
+        assert 'cursor-plugin' in build.rewrite_ide_source(line, CURSOR, Path("x"))
+
+    def test_already_targeted_is_idempotent(self):
+        line = 'metadata={"agentic-ide-source":"cursor-plugin"}'
+        assert build.rewrite_ide_source(line, CURSOR, Path("x")) == line
+
+    def test_a_foreign_target_name_is_an_error(self):
+        """Base drifting back to a hardcoded target name must fail the build, not be
+        silently overwritten — silence is how this survived the first time."""
+        line = 'metadata={"agentic-ide-source":"claude-code-plugin"}'
+        with pytest.raises(ValueError, match="base must use"):
+            build.rewrite_ide_source(line, CURSOR, Path("x"))
+
+    def test_py_dispatch_applies_both_scalars(self):
+        text = 'source_tag="pinecone_skills:assistant"\n{"agentic-ide-source":"pinecone-skills"}\n'
+        out = build.render_file(Path("scripts/create.py"), text, "assistant", CURSOR, Path("x"))
+        assert "cursor_plugin:assistant" in out
+        assert "cursor-plugin" in out
+        assert "pinecone-skills" not in out
+
+    def test_ide_source_value_is_not_eaten_by_cross_references(self):
+        """`pinecone-skills` is not a slug, so no rule should touch it in prose."""
+        assert xref("pinecone-skills") == "pinecone-skills"
 
 
 class TestFrontmatter:

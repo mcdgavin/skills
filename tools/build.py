@@ -40,6 +40,13 @@ DIST_DIR = REPO / "dist"
 BASE_PREFIX = "pinecone-"
 NEUTRAL_SOURCE_TAG = "pinecone_skills"
 
+# The assistant create script stamps this metadata key on every assistant it makes.
+# It is a second per-target value with the same shape as source_tag, and it was
+# missed for months: base hardcoded `claude-code-plugin`, so a sync would have
+# labelled Cursor-created assistants as Claude Code.
+IDE_SOURCE_KEY = "agentic-ide-source"
+NEUTRAL_IDE_SOURCE = "pinecone-skills"
+
 # Frontmatter keys, in the order the build must emit them. `allowed-tools` comes
 # from the manifest and is appended last; the rest pass through from base.
 FRONTMATTER_ORDER = ["name", "description", "argument-hint", "allowed-tools"]
@@ -54,7 +61,8 @@ def load_manifest(target: str) -> dict[str, Any]:
     if not path.exists():
         raise typer.BadParameter(f"no manifest at {path.relative_to(REPO)}")
     m = yaml.safe_load(path.read_text())
-    for key in ("repo", "skills_path", "dir_name", "skill_name", "cross_reference", "source_tag", "include"):
+    for key in ("repo", "skills_path", "dir_name", "skill_name", "cross_reference",
+                "source_tag", "ide_source", "include"):
         if key not in m:
             raise ValueError(f"{target}.yaml is missing required key: {key}")
     m.setdefault("frontmatter", {}) or m.__setitem__("frontmatter", m.get("frontmatter") or {})
@@ -139,6 +147,28 @@ def rewrite_source_tag(text: str, manifest: dict[str, Any]) -> str:
     )
 
 
+IDE_SOURCE_RE = re.compile(rf'("{re.escape(IDE_SOURCE_KEY)}"\s*:\s*")([^"]*)(")')
+
+
+def rewrite_ide_source(text: str, manifest: dict[str, Any], path: Path) -> str:
+    """Retarget the `agentic-ide-source` metadata value inside .py files.
+
+    Strict on purpose. Base must hold the neutral value, so anything else means a
+    target name has been hardcoded into shared source again. Silently overwriting
+    it would hide the very drift this rule exists to stop.
+    """
+    def repl(match: re.Match[str]) -> str:
+        found = match.group(2)
+        if found not in (NEUTRAL_IDE_SOURCE, manifest["ide_source"]):
+            raise ValueError(
+                f"{path}: {IDE_SOURCE_KEY} is {found!r}; base must use "
+                f"{NEUTRAL_IDE_SOURCE!r} so each target can set its own"
+            )
+        return match.group(1) + manifest["ide_source"] + match.group(3)
+
+    return IDE_SOURCE_RE.sub(repl, text)
+
+
 def split_frontmatter(text: str, path: Path) -> tuple[dict[str, str], str]:
     """Return (frontmatter dict, body). Preserves value strings verbatim."""
     if not text.startswith("---\n"):
@@ -191,7 +221,7 @@ def render_file(rel: Path, text: str, slug: str, manifest: dict[str, Any], path:
     if rel.name == "SKILL.md":
         return render_skill_md(text, slug, manifest, path)
     if rel.suffix == ".py":
-        return rewrite_source_tag(text, manifest)
+        return rewrite_ide_source(rewrite_source_tag(text, manifest), manifest, path)
     if rel.suffix == ".md":
         return rewrite_cross_references(text, manifest)
     return text
@@ -237,9 +267,22 @@ def build_target(target: str, out_root: Path | None = None) -> tuple[Path, int]:
 # checks
 # --------------------------------------------------------------------------- #
 
+def permitted_line_changes(manifest: dict[str, Any]) -> list[tuple[str, str]]:
+    """(marker in base, value in rendered) pairs the identity check tolerates.
+
+    Every per-target scalar belongs here. Leaving one out makes the identity check
+    fail on a legitimate rewrite; adding one loosely makes it blind to a real
+    change. Keep it to exact neutral markers.
+    """
+    return [
+        (NEUTRAL_SOURCE_TAG, manifest["source_tag"]),
+        (NEUTRAL_IDE_SOURCE, manifest["ide_source"]),
+    ]
+
+
 def check_identity_target(target: str, out_root: Path | None = None) -> list[str]:
     """For a target whose dir_name and skill_name equal base, rendered output must
-    be byte-identical to base except for source_tag lines.
+    be byte-identical to base except for the per-target scalars above.
 
     This is the cheapest possible regression test for such a target — it replaces
     a paid eval run with an exact comparison.
@@ -265,24 +308,32 @@ def check_identity_target(target: str, out_root: Path | None = None) -> list[str
             if len(a) != len(b):
                 problems.append(f"{target}: line count differs for {slug}/{rel}")
                 continue
+            permitted = permitted_line_changes(manifest)
             for i, (la, lb) in enumerate(zip(a, b), 1):
                 if la == lb:
                     continue
-                if NEUTRAL_SOURCE_TAG in la and manifest["source_tag"] in lb:
-                    continue                     # the one permitted difference
+                if any(marker in la and value in lb for marker, value in permitted):
+                    continue                     # a declared per-target scalar
                 problems.append(f"{target}: unexpected change at {slug}/{rel}:{i}\n    - {la}\n    + {lb}")
     return problems
 
 
 def check_no_neutral_tags(target: str, out_root: Path | None = None) -> list[str]:
-    """No rendered output may still carry the neutral source tag."""
+    """No rendered output may still carry a neutral per-target marker.
+
+    Catches the case where base grows a new site the rewrite rules do not reach —
+    a new script, or the same field written with different spacing.
+    """
     manifest = load_manifest(target)
     out = (out_root or DIST_DIR) / target / manifest["skills_path"]
-    return [
-        f"{target}: {p.relative_to(out)} still contains {NEUTRAL_SOURCE_TAG}:"
-        for p in out.rglob("*.py")
-        if f"{NEUTRAL_SOURCE_TAG}:" in p.read_text()
-    ]
+    problems: list[str] = []
+    for p in sorted(out.rglob("*.py")):
+        text = p.read_text()
+        if f"{NEUTRAL_SOURCE_TAG}:" in text:
+            problems.append(f"{target}: {p.relative_to(out)} still contains {NEUTRAL_SOURCE_TAG}:")
+        if NEUTRAL_IDE_SOURCE in text:
+            problems.append(f"{target}: {p.relative_to(out)} still contains {NEUTRAL_IDE_SOURCE}")
+    return problems
 
 
 def check_idempotent(target: str, tmp_root: Path) -> list[str]:

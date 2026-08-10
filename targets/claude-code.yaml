@@ -23,6 +23,11 @@ cross_reference: "pinecone:{slug}"
 # Replaces `pinecone_skills:` in the source_tag argument inside .py files.
 source_tag: claude_code_plugin
 
+# Replaces `pinecone-skills` in the `agentic-ide-source` metadata value that
+# pinecone-assistant/scripts/create.py stamps on each assistant it creates.
+# Same shape as source_tag, different consumer.
+ide_source: claude-code-plugin
+
 include:
   - assistant
   - cli

@@ -78,7 +78,7 @@ def main(
                 instructions=instructions if instructions else None,
                 region=region,
                 timeout=timeout,
-                metadata={"agentic-ide-source":"claude-code-plugin"}
+                metadata={"agentic-ide-source":"pinecone-skills"}
             )
 
         # Success message
