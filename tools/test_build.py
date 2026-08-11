@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
+# Pinned exactly, not floating. These install at CI job time in a job that holds a
+# write token for the plugin repos, so a compromised release would run there. The
+# same floating-lower-bound habit is what let pinecone 9 break every skill script.
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
-#   "pytest>=8.0",
-#   "pyyaml>=6.0",
-#   "typer>=0.15.0",
+#   "pytest==9.1.1",
+#   "pyyaml==6.0.3",
+#   "typer==0.27.1",
 # ]
 # ///
 """Tests for tools/build.py.
