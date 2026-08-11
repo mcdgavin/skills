@@ -9,17 +9,17 @@ Pinecone is the leading vector database for building accurate and performant AI 
 
 Here's everything you need to get started and a summary of all available skills.
 
+<<invoke_any_skill>>
+
 ---
 
 ## What You Need
 
 ### Required
 - **Pinecone account** — free to create at https://app.pinecone.io/?sessionType=signup
-- **API key** — create one in the Pinecone console after signing up, then either export it in your terminal:
-  ```bash
-  export PINECONE_API_KEY="your-key"
-  ```
-  Or add it to a `.env` file if your IDE doesn't inherit shell variables: `PINECONE_API_KEY=your-key`
+- **API key** — create one in the Pinecone console after signing up, then make it
+  available to this environment:
+  <<api_key_setup>>
 
 ### Optional (unlock more capabilities)
 

@@ -208,8 +208,7 @@ def main(
         # Next steps
         if uploaded > 0:
             next_steps = f"""[bold]Next steps:[/bold]
-• Chat: [cyan]uv run chat.py --assistant {assistant} --message "YOUR QUESTION"[/cyan]
-• Context: [cyan]uv run context.py --assistant {assistant} --query "SEARCH TEXT"[/cyan]
+<<next_after_upload>>
 
 [dim]Note: Files are being processed and will be available shortly[/dim]"""
             console.print(Panel(next_steps, title="What's Next?", border_style="green"))
