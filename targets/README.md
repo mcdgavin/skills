@@ -3,9 +3,10 @@
 One YAML per publish target. `tools/build.py` reads `skills/` plus a manifest and
 renders `dist/<target>/`. The build is a pure function: same inputs, same bytes.
 
-This replaces the old arrangement, where each target repo ran its own agent
+This replaced the old arrangement, where each target repo ran its own agent
 (`contextualize-skills.yml`) to rewrite skills on arrival. Three targets meant
-three agents and three different answers to the same question.
+three agents and three different answers to the same question. Those workflows are
+gone as of 2026-08-12; nothing rewrites skills after they leave this repo.
 
 ## Fields
 

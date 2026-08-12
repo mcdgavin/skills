@@ -1,6 +1,8 @@
 # Skills Repo — Authoring Guidelines
 
-This is the **base skills repo**. Skills here must work across any agent environment (Claude Code, Cursor, Gemini, etc.). IDE-specific repos fork from here and contextualize as needed.
+This is the **base skills repo** and the only place skills are authored. Skills here must work across any agent environment (Claude Code, Cursor, etc.).
+
+Plugin repos receive generated output. `tools/build.py` renders this tree per target using the manifests in `targets/`, and the sync workflow opens a pull request against each plugin repo. Nothing rewrites skills after they leave here, so what you write is what ships. Where a target genuinely needs different wording, base leaves a `<<marker>>` and each file in `targets/` supplies its own text — see `targets/README.md`.
 
 ## Generalization Rules
 
