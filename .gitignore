@@ -18,3 +18,8 @@ dist/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Eval baseline docs — built locally, never committed. A vendored copy of the
+# Pinecone docs goes stale silently. See tasks/README.md.
+baseline-doc.md
+tasks/baseline-doc.md
