@@ -1,6 +1,12 @@
 # Tasks for the "pinecone-full-text-search" skill.
 # All tasks are code-gen: the agent writes Python files; we grade by inspection.
 # Three variants run per task: without-skill, with-docs (baseline-doc.md), with-skill.
+#
+# SDK pin note: the LIVE tasks' `setup:` blocks below pin `pinecone==10.0.0rc1` because
+# that's what's on PyPI while 10.0.0 final hasn't shipped yet. The skill itself (SKILL.md,
+# scripts/ingest.py) is written against the final `pinecone==10.0.0` pin. Bump every
+# `pinecone==10.0.0rc1` occurrence in this file to `pinecone==10.0.0` once the stable
+# release is out, before committing further changes here.
 
 tasks:
 
@@ -30,43 +36,61 @@ tasks:
       context_refs: ["baseline-doc.md"]
       criteria: |
         PASS requires `create_index.py` containing:
-        - Imports from `pinecone` and `pinecone.preview` (NOT just `pinecone.Index`).
-          Concretely: `from pinecone import Pinecone` and either
-          `from pinecone.preview import SchemaBuilder` or building the schema as a dict
-          consumed by `pc.preview.indexes.create(name=..., schema=...)`.
-        - `title` and `body` declared as `string` fields with `full_text_search={...}` (a dict;
-          `{}` is acceptable for defaults). The legacy `full_text_searchable=True` shape is FAIL.
+        - Imports from `pinecone` (NOT just `pinecone.Index`, NOT `pinecone.preview` — that
+          package was deleted in SDK 10.0.0). Concretely: `from pinecone import Pinecone,
+          SchemaBuilder`, or building the schema as a dict consumed by
+          `pc.indexes.create(name=..., schema=...)`.
+        - `title` and `body` declared as `string` fields with `full_text_search={...}` (a dict,
+          or bare `True` for defaults). The legacy `full_text_searchable=True` shape is FAIL.
         - Exactly ONE `dense_vector` field with an explicit `dimension=1024` (or another sensible
-          value matching the prompt's "1024-dim" hint). NOT two dense_vector fields. NOT a
-          dense_vector that re-encodes title/body text already covered by FTS.
-        - `rating` declared as `float` with `filterable=True`.
-        - `year` declared as `float` with `filterable=True` (Pinecone has no `int` field type
-          in this preview API — `float` is the only numeric).
-        - `reviewer_id` declared as `string` with `filterable=True`.
-        - `tags` declared as `string_list` with `filterable=True` (NOT `string`).
-        - Index creation via `pc.preview.indexes.create(...)`. NOT `pc.create_index(...)`.
+          value matching the prompt's "1024-dim" hint) AND an explicit `metric=`. NOT two
+          dense_vector fields. NOT a dense_vector that re-encodes title/body text already
+          covered by FTS.
+        - `rating`, `year`, `reviewer_id`, AND `tags` are ALL absent from the schema — none of
+          them, not just `reviewer_id`. Confirmed live against the real API: on a managed index
+          (the deployment this skill always uses), the schema accepts ONLY `dense_vector`,
+          `sparse_vector`, and FTS-enabled `string` fields — `float`, `string_list`, and plain
+          filterable `string` fields are ALL rejected with a 400 if declared, regardless of
+          type. The correct move for all four fields is to omit them from the schema entirely;
+          each auto-indexes for filtering the first time it appears on an upserted document
+          (`rating`/`year` as Python floats, `tags` as a list of strings, `reviewer_id` as a
+          plain string). A comment noting this (or noting these fields will be supplied at
+          upsert time, not schema time) is a strong positive signal.
+        - Index creation via `pc.indexes.create(...)`, ideally with an explicit `deployment=`
+          (e.g. `{"deployment_type": "managed", "cloud": "aws", "region": "us-east-1"}`) though
+          omitting it is not a FAIL (it defaults to managed/aws/us-east-1). NOT `pc.create_index(...)`.
 
         BONUS (not required, but expected from a well-calibrated with-skill agent):
-        - Comment or docstring noting that schemas are immutable in 2026-01.alpha and asking
+        - Comment or docstring noting that schemas are immutable in 2026-07 and asking
           the user to confirm before calling `create()`.
-        - A `while not pc.preview.indexes.describe(name).status.ready: time.sleep(...)` block
-          even though the prompt says don't run it (shows agent knows the next step).
+        - A comment noting that `pc.indexes.create(...)` already polls until the index is ready
+          by default (no separate wait loop needed unless `timeout=-1` was passed) — this shows
+          the agent knows 10.0.0's create() semantics rather than carrying over the old preview
+          habit of a manual `while not ...describe(name).status.ready` loop.
         - `stemming: True` on `body` (long prose) and absent / `False` on `title` (proper nouns).
 
         FAIL if:
         - Any use of `pc.Index(...)`, `index.upsert(vectors=...)`, or
           `pc.create_index(...)` (legacy vector-index path).
+        - `import pinecone.preview` or `from pinecone.preview import ...` anywhere (deleted
+          in SDK 10.0.0 — raises `ModuleNotFoundError`).
         - `full_text_searchable=True, language="en"` (legacy text shape).
         - Two or more `dense_vector` fields, OR a `dense_vector` named like
           `body_embedding` AND a separate FTS body field that re-encodes the same text
           unnecessarily without explanation.
-        - Missing `dimension` on the dense_vector field.
-        - `tags` declared as plain `string` rather than `string_list`.
+        - Missing `dimension` or `metric` on the dense_vector field.
         - Numeric fields declared as `int` (no such type).
+        - ANY of `rating`, `year`, `reviewer_id`, or `tags` declared in the schema — as
+          `add_float_field`, `add_string_list_field`, or a plain filterable `add_string_field`
+          — this is the old-preview-API pattern and now gets rejected by the server with a 400
+          on a managed index, for every one of these types, not just plain strings.
       flexible:
         - "Extra type hints, docstrings, or print statements are fine."
         - "Either SchemaBuilder chained-builder style OR raw-dict schema is acceptable."
         - "Field naming is flexible as long as the types are correct."
+        - "Whether the agent mentions rating/year/reviewer_id/tags at all (e.g. as a comment
+          describing where they'll be supplied) is a nice-to-have, not required — the hard
+          requirement is only that all four are absent from the schema."
 
   # 2. Hybrid query construction (UC-3): one scoring type, hard reqs as filter.
   #    Catches: mixed scoring types in score_by, hard-req tokens in score_by, missing
@@ -196,7 +220,15 @@ tasks:
     ground_truth:
       context_refs: ["baseline-doc.md"]
       criteria: |
-        PASS requires `ingest.py` that:
+        This task accepts TWO shapes for `ingest.py`, both PASS: (A) hand-rolled inline logic
+        implementing the three requirements directly, or (B) a thin wrapper that invokes the
+        skill's bundled `scripts/ingest.py` helper (via `subprocess`, `uv run --script`, or
+        equivalent) with the right flags — the skill's own "Ingesting — use the packaged
+        helper" guidance explicitly prefers delegating to the helper over hand-rolling this
+        exact logic, and an agent that does so is following the skill correctly, not skipping
+        the task.
+
+        PASS (shape A — inline) requires `ingest.py` that:
 
         - Uses `idx.documents.batch_upsert(namespace=..., documents=batch)` for bulk loading
           (NOT a 5000-iteration loop calling `documents.upsert` once per doc).
@@ -209,20 +241,39 @@ tasks:
         - Uses a reasonable batch size (≤200 docs per batch_upsert call is fine; 5000 in one
           call may exceed payload limits).
 
-        BONUS (skill-specific knowledge):
+        PASS (shape B — delegates to the helper) requires `ingest.py` (or the invocation it
+        constructs) to call `scripts/ingest.py` with, at minimum:
+        - `--data` pointing at `articles.jsonl`.
+        - `--index articles`.
+        - `--sentinel-field` set to an FTS-enabled field from the given schema (`title` or
+          `body`).
+        A comment or chat explanation of *why* delegating is correct (the helper already does
+        batching + error inspection + polling) is a strong positive signal for this shape, not
+        a requirement.
+
+        BONUS (skill-specific knowledge, either shape):
         - A comment noting that `batch_upsert` returning ≠ documents searchable (async indexing).
-        - A note about dense_vector payload size at scale (truncate to 768 if 1024+ batches fail).
-        - Calls `documents.search` with the sentinel inside a try/except to handle transient
-          empty-result windows gracefully.
+        - A note about dense_vector payload size at scale (smaller batch size, or truncating the
+          embedding dimension, if 1024-dim batches are likely to hit payload caps).
+        - (Shape A only) Calls `documents.search` with the sentinel inside a try/except to
+          handle transient empty-result windows gracefully.
 
         FAIL if:
-        - The script trusts the HTTP 202 from batch_upsert as "documents indexed".
+        - Neither shape is satisfied — e.g. a hand-rolled loop that skips error inspection or
+          polling, AND no delegation to `scripts/ingest.py` either.
+        - The script trusts the HTTP 202 from batch_upsert as "documents indexed" (shape A).
         - No polling loop with a deadline — instead returns immediately or sleeps a fixed
-          (and unjustified) amount and assumes success.
-        - The result of batch_upsert is not inspected at all.
+          (and unjustified) amount and assumes success (shape A).
+        - The result of batch_upsert is not inspected at all (shape A).
         - 5000 individual `documents.upsert` calls in a Python for-loop.
-        - Uses a sentinel `documents.search` call but doesn't pass `include_fields` (it's
-          required on every search).
+        - Uses a sentinel `documents.search` call but doesn't pass `include_fields` (shape A;
+          it's required on every search).
+        - Shape B's helper invocation is missing `--data`, `--index`, or `--sentinel-field`, or
+          uses a `--sentinel-field` that isn't FTS-enabled (e.g. `embedding` or `category`).
+      flexible:
+        - "Either shape A (inline) or shape B (delegates to scripts/ingest.py) is a full PASS —
+          neither is preferred over the other for grading purposes, though the skill itself
+          recommends shape B."
 
   # 5. Trap task: the agent must REFUSE the bad pattern and redirect.
   #    Catches: confident generation of a request the server rejects.
@@ -255,7 +306,7 @@ tasks:
 
         BONUS:
         - Picks alternative (a) by default and explains it's the preferred shape per the
-          public preview docs, mentioning (b) only as a fallback when both signals genuinely
+          Pinecone docs, mentioning (b) only as a fallback when both signals genuinely
           must drive ranking.
 
         FAIL if:
@@ -347,49 +398,67 @@ tasks:
 
         SCHEMA RATIONALE (in chat, docstring, or comments):
         - Names `title` and `body` as the FTS fields and explains they're text-searchable.
-        - Names `rating`, `year`, `category` as filterable metadata.
+        - Names `rating`, `year`, `category` as filterable metadata — and notes (or the code
+          demonstrates) that NONE of the three are declared in the schema, because on a managed
+          index the schema accepts only `dense_vector`, `sparse_vector`, and FTS-enabled
+          `string` fields; `float` and plain filterable `string` fields are rejected with a 400
+          regardless of type. All three are simply included on the upserted documents and
+          auto-indexed for filtering.
         - Makes a deliberate call on `dense_vector`: either declines it (with a one-sentence
           reason like "the corpus is small and the user only mentioned keyword search") OR
           adds it with a clear rationale (e.g. "for mood/topic queries"). Either choice is
           acceptable; absence of any rationale is FAIL.
 
         ONBOARD.PY MUST CONTAIN:
-        - `from pinecone import Pinecone` and `from pinecone.preview import SchemaBuilder`
-          (or equivalent dict-schema usage with `pc.preview.indexes.create`).
+        - `from pinecone import Pinecone, SchemaBuilder` (or equivalent dict-schema usage with
+          `pc.indexes.create`) — NOT `pinecone.preview` (deleted in SDK 10.0.0).
         - Schema with:
-            * `title`, `body` as `string` with `full_text_search={...}` (dict, not legacy
-              `full_text_searchable=True`).
-            * `rating`, `year` as `float` with `filterable=True` (NOT `int`).
-            * `category` as `string` with `filterable=True`.
-        - Index creation via `pc.preview.indexes.create(name=..., schema=...)`.
+            * `title`, `body` as `string` with `full_text_search={...}` (dict or bare `True`,
+              not legacy `full_text_searchable=True`).
+            * `rating`, `year`, AND `category` all NOT declared as schema fields at all (see
+              SCHEMA RATIONALE above — this now applies to the numeric fields too, not just
+              `category`).
+        - Index creation via `pc.indexes.create(name=..., schema=...)`.
         - Ingestion: either `documents.upsert(documents=[...])` or
-          `documents.batch_upsert(documents=[...])` covering ALL 5 rows.
+          `documents.batch_upsert(documents=[...])` covering ALL 5 rows, with `rating`, `year`,
+          and `category` all present as ordinary fields on each document dict.
         - A polling loop: `idx.documents.search(...)` inside a time-bounded `while`
           (with a deadline / `time.time() + N` pattern) using a sentinel query, BEFORE the
-          example search runs. The point is to wait for async indexing to complete.
+          example search runs. The point is to wait for async indexing to complete — this is
+          separate from (and in addition to) `pc.indexes.create()`'s own default polling for the
+          index itself to become ready.
         - One example `documents.search(...)` call showing the agent how to query — either
           a `text` BM25 search on body/title, or a metadata-filtered search.
         - `include_fields` explicit on every `documents.search` call (sentinel + example).
 
-        GOTCHAS section MUST mention at least 2 of these 3 (in chat, comment, or docstring):
+        GOTCHAS section MUST mention at least 2 of these 4 (in chat, comment, or docstring):
         - Schema immutability (can't change schema after `create()`; plan once).
         - Async indexing (`upsert` returning ≠ docs are searchable; you must poll).
         - One scoring type per `documents.search` request (no mixing dense + text in
           `score_by`; use a text-match filter for hybrid).
+        - No filterable metadata field — string, string_list, float, or boolean alike — is
+          schema-declared on a managed index; they're all indexed automatically from whatever's
+          on the upserted documents.
 
         BONUS:
         - Uses `documents.batch_upsert` even for 5 rows (canonical pattern; scales).
         - Inspects `result.errors` / `result.has_errors` after upsert.
         - Notes `_score` (not `score`) when iterating result fields.
-        - Calls `pc.preview.indexes.describe(name).status.ready` poll before the
-          documents-side polling loop.
+        - Notes that `pc.indexes.create()` already blocks until the index is ready by default
+          (10.0.0 behavior) rather than adding a redundant manual
+          `pc.indexes.describe(name).status.ready` wait loop before the documents-side poll.
 
         FAIL if:
         - Any use of `pc.Index(...)`, `pc.create_index(...)`, `index.upsert(vectors=...)`,
           `ServerlessSpec`, or `pinecone_text.sparse.BM25Encoder` (legacy vector-index path
           OR sparse-encoder hybrid path — both are wrong APIs for FTS).
+        - `import pinecone.preview` or `from pinecone.preview import ...` anywhere (deleted in
+          SDK 10.0.0).
         - `full_text_searchable=True, language="en"` (legacy text shape).
-        - Numeric fields declared as `int` (no such type in the preview API).
+        - Numeric fields declared as `int` (no such type).
+        - Any of `rating`, `year`, or `category` declared in the schema (as `add_float_field` or
+          a plain filterable `add_string_field`) — rejected by the server with a 400 on a
+          managed index, for both types, not just plain strings.
         - No polling loop — agent assumes ingestion is synchronous.
         - No example search call (or only a Python comment "you would search like X").
         - Skips writing `onboard.py` entirely (chat-only response).
@@ -494,17 +563,17 @@ tasks:
 
   # 10. LIVE gut check — does the agent actually create an index against real
   #     Pinecone? Exercises the whole stack: sandbox secret plumbing,
-  #     pinecone==9.1.0 install, control-plane connectivity, polling, teardown.
+  #     pinecone==10.0.0rc1 install, control-plane connectivity, polling, teardown.
   #     If this PASSes, the live-execution wiring is ready for harder tasks
   #     (ingest + query). Sequential only (--parallel 1) — uses a fixed name.
   - id: create-index-live
     setup: |
-      pip install -q pinecone==9.1.0
+      pip install -q pinecone==10.0.0rc1
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      if pc.preview.indexes.exists('test-index-fts'):
-          pc.preview.indexes.delete('test-index-fts')
+      if pc.indexes.exists('test-index-fts'):
+          pc.indexes.delete('test-index-fts')
           print('cleaned up stale test-index-fts')
       else:
           print('no leftover index, clean start')
@@ -513,11 +582,16 @@ tasks:
       Create a Pinecone FTS index named `test-index-fts` with this minimal schema:
         - `title`: FTS-enabled string
         - `body`: FTS-enabled string
-        - `year`: float, filterable
-        - `category`: string, filterable
+
+      I also want to filter by `year` (a number) and `category` (a string) later — don't add
+      either of those to the schema itself. A managed index rejects ANY schema-declared
+      filterable metadata field with a 400, whether it's a plain string, a float, a boolean, or
+      a string_list — `year` and `category` should just be included on upserted documents
+      instead, where they auto-index for filtering with nothing to configure. The created
+      schema itself should have only the two FTS fields above.
 
       After creating, poll until ready (`status.ready: true`), then print the resolved
-      schema by calling `pc.preview.indexes.describe('test-index-fts')`.
+      schema by calling `pc.indexes.describe('test-index-fts')`.
 
       Save your script as `create.py` and EXECUTE it (this is a live task; don't just
       write the file). Use `python create.py` or `python3 create.py` once written.
@@ -527,8 +601,8 @@ tasks:
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      assert pc.preview.indexes.exists('test-index-fts'), 'INDEX MISSING'
-      d = pc.preview.indexes.describe('test-index-fts')
+      assert pc.indexes.exists('test-index-fts'), 'INDEX MISSING'
+      d = pc.indexes.describe('test-index-fts')
       print(f'name: {d.name}')
       print(f'ready: {d.status.ready}')
       print(f'fields: {sorted(d.schema.fields.keys())}')
@@ -537,8 +611,8 @@ tasks:
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      if pc.preview.indexes.exists('test-index-fts'):
-          pc.preview.indexes.delete('test-index-fts')
+      if pc.indexes.exists('test-index-fts'):
+          pc.indexes.delete('test-index-fts')
           print('teardown: deleted test-index-fts')
       " || true
     ground_truth:
@@ -547,13 +621,21 @@ tasks:
         PASS requires the verify output to show all three of:
         - `name: test-index-fts`
         - `ready: True`
-        - `fields:` listing all four expected names alphabetically: `body`, `category`, `title`, `year`
+        - `fields:` listing exactly the two expected names alphabetically: `body`, `title` —
+          NOT `year`, NOT `category`. Confirmed live: the real server rejects `float`,
+          `string_list`, and plain filterable `string` schema fields with the same 400 as a
+          plain filterable string, so a correct agent never gets either into the schema.
 
         FAIL if:
-        - verify exits non-zero (index missing or describe failed)
+        - verify exits non-zero (index missing or describe failed) — note this includes the
+          case where the agent declared `year` or `category` (in any schema-declarable form,
+          including `add_float_field`) in the schema, since the real server rejects that with a
+          400 at create time and the index would never exist for `verify` to find
+        - `fields:` includes `year` or `category`
         - the listed fields are wrong, missing, or extra
-        - the agent reached for `pc.create_index(...)` / `ServerlessSpec` (legacy API) instead
-          of `pc.preview.indexes.create(name=..., schema=...)`
+        - the agent reached for `pc.create_index(...)` / `ServerlessSpec` (legacy API) or
+          `pinecone.preview` (deleted in SDK 10.0.0) instead of `pc.indexes.create(name=...,
+          schema=...)`
         - the agent wrote the script but didn't execute it (no live index after agent finishes)
 
         This is a wiring test, not a content test. The grader cares about the verify-output
@@ -568,20 +650,20 @@ tasks:
   - id: ingest-into-live-index
     setup: |
       set -e   # any failed step aborts setup loudly; framework will see non-zero exit
-      pip install -q pinecone==9.1.0
+      pip install -q pinecone==10.0.0rc1
       # Idempotent cleanup
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      if pc.preview.indexes.exists('test-index-fts'):
-          pc.preview.indexes.delete('test-index-fts')
+      if pc.indexes.exists('test-index-fts'):
+          pc.indexes.delete('test-index-fts')
           print('cleaned up stale test-index-fts')
       "
       # Create the bird-search index for the agent to ingest into
       python3 -c "
       import time
       from pinecone import Pinecone
-      from pinecone.preview import SchemaBuilder
+      from pinecone import SchemaBuilder
       pc = Pinecone()
       schema = (
           SchemaBuilder()
@@ -591,9 +673,9 @@ tasks:
           .add_dense_vector_field('image_embedding', dimension=8, metric='cosine')
           .build()
       )
-      pc.preview.indexes.create(name='test-index-fts', schema=schema)
+      pc.indexes.create(name='test-index-fts', schema=schema)
       print('created test-index-fts; waiting for ready...')
-      while not pc.preview.indexes.describe('test-index-fts').status.ready:
+      while not pc.indexes.describe('test-index-fts').status.ready:
           time.sleep(3)
       print('test-index-fts is ready')
       "
@@ -627,8 +709,8 @@ tasks:
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      assert pc.preview.indexes.exists('test-index-fts'), 'INDEX MISSING'
-      idx = pc.preview.index(name='test-index-fts')
+      assert pc.indexes.exists('test-index-fts'), 'INDEX MISSING'
+      idx = pc.index(name='test-index-fts')
       # Query bird_name — every bird's name contains 'tinamou' so all 3 match
       # iff all 3 are searchable.
       resp = idx.documents.search(
@@ -645,8 +727,8 @@ tasks:
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      if pc.preview.indexes.exists('test-index-fts'):
-          pc.preview.indexes.delete('test-index-fts')
+      if pc.indexes.exists('test-index-fts'):
+          pc.indexes.delete('test-index-fts')
           print('teardown: deleted test-index-fts')
       "
     ground_truth:
@@ -687,18 +769,18 @@ tasks:
   - id: query-live-index
     setup: |
       set -e
-      pip install -q pinecone==9.1.0
+      pip install -q pinecone==10.0.0rc1
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      if pc.preview.indexes.exists('test-index-fts'):
-          pc.preview.indexes.delete('test-index-fts')
+      if pc.indexes.exists('test-index-fts'):
+          pc.indexes.delete('test-index-fts')
           print('cleaned up stale test-index-fts')
       "
       python3 -c "
       import time
       from pinecone import Pinecone
-      from pinecone.preview import SchemaBuilder
+      from pinecone import SchemaBuilder
       pc = Pinecone()
       schema = (
           SchemaBuilder()
@@ -708,8 +790,8 @@ tasks:
           .add_dense_vector_field('image_embedding', dimension=8, metric='cosine')
           .build()
       )
-      pc.preview.indexes.create(name='test-index-fts', schema=schema)
-      while not pc.preview.indexes.describe('test-index-fts').status.ready:
+      pc.indexes.create(name='test-index-fts', schema=schema)
+      while not pc.indexes.describe('test-index-fts').status.ready:
           time.sleep(3)
       print('test-index-fts created and ready')
       "
@@ -723,7 +805,7 @@ tasks:
           {'_id': 'Little_tinamou',   'bird_name': 'Little tinamou',   'intro': 'Crypturellus soui is a small species of tinamou.',          'body': 'Found in tropical forests of Mexico, Central and South America. Eats berries and small invertebrates. Lays glossy eggs in shallow ground nests.', 'image_embedding': [0.0, 0.3, 0.2, -0.1, 0.4, 0.1, 0.3, -0.2]},
       ]
       pc = Pinecone()
-      idx = pc.preview.index(name='test-index-fts')
+      idx = pc.index(name='test-index-fts')
       idx.documents.batch_upsert(namespace='__default__', documents=DOCS)
       # Poll until searchable
       deadline = time.time() + 120
@@ -776,8 +858,8 @@ tasks:
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      if pc.preview.indexes.exists('test-index-fts'):
-          pc.preview.indexes.delete('test-index-fts')
+      if pc.indexes.exists('test-index-fts'):
+          pc.indexes.delete('test-index-fts')
           print('teardown: deleted test-index-fts')
       "
     ground_truth:
@@ -800,7 +882,7 @@ tasks:
         - The agent used a text-match filter (`$match_all` "tropical" or `$match_phrase` "tropical")
           rather than putting "tropical" in `score_by` as a BM25 query. Either works, but the
           filter is the more discriminating shape (must-mention vs ranking-by).
-        - The agent called `pc.preview.indexes.describe('test-index-fts')` to confirm the
+        - The agent called `pc.indexes.describe('test-index-fts')` to confirm the
           schema before constructing the call.
 
   # 13. LIVE end-to-end: create + ingest + query in one task. Setup ONLY drops
@@ -811,12 +893,12 @@ tasks:
   - id: onboard-live-end-to-end
     setup: |
       set -e
-      pip install -q pinecone==9.1.0
+      pip install -q pinecone==10.0.0rc1
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      if pc.preview.indexes.exists('test-index-fts'):
-          pc.preview.indexes.delete('test-index-fts')
+      if pc.indexes.exists('test-index-fts'):
+          pc.indexes.delete('test-index-fts')
           print('cleaned up stale test-index-fts')
       "
       mkdir -p /workspace/app
@@ -856,13 +938,13 @@ tasks:
 
       # 1. Index exists and is ready
       pc = Pinecone()
-      assert pc.preview.indexes.exists('test-index-fts'), 'INDEX MISSING'
-      d = pc.preview.indexes.describe('test-index-fts')
+      assert pc.indexes.exists('test-index-fts'), 'INDEX MISSING'
+      d = pc.indexes.describe('test-index-fts')
       print(f'index ready: {d.status.ready}')
       print(f'schema fields: {sorted(d.schema.fields.keys())}')
 
       # 2. Documents are searchable (use a query that hits all 3 to confirm full ingest)
-      idx = pc.preview.index(name='test-index-fts')
+      idx = pc.index(name='test-index-fts')
       r = idx.documents.search(
           namespace='__default__', top_k=10,
           score_by=[{'type':'text','field':'bird_name','query':'tinamou'}],
@@ -882,8 +964,8 @@ tasks:
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
-      if pc.preview.indexes.exists('test-index-fts'):
-          pc.preview.indexes.delete('test-index-fts')
+      if pc.indexes.exists('test-index-fts'):
+          pc.indexes.delete('test-index-fts')
           print('teardown: deleted test-index-fts')
       "
     ground_truth:
@@ -915,7 +997,7 @@ tasks:
         - Schema declaration includes thoughtful stemming choices (off for `bird_name`, on for
           `body` and `intro`).
         - The agent confirmed schema with the user (chat statement) before calling create() —
-          schemas are immutable in 2026-01.alpha.
+          schemas are immutable in 2026-07.
 
   # 14. PDF onboarding — does the skill handle a fresh "I have a PDF, help me
   #     index it" request? Mirrors the real-user trace where the agent had to
@@ -1036,13 +1118,20 @@ tasks:
           (typical names: `text`, `body`, `content`, `chunk`).
         - Names at least one filterable metadata field (e.g. `page_number`,
           `section`, `chapter`, `source`). A schema with only an FTS field and no
-          filterable metadata is too thin and is FAIL.
-        - States the chunking strategy explicitly (page-level, section-level,
-          fixed-size, paragraph-level — any deliberate choice is fine, including
-          "the whole document is one record" if argued).
-        - Uses the correct preview-API field types: `string` with
-          `full_text_search={...}` for FTS, `float` for numeric metadata (NOT
-          `int`), `string` with `filterable=True` for tag-style strings.
+          filterable metadata is too thin and is FAIL. ALL of these — the numeric `page_number`
+          included, not just the plain strings — should be described as filterable metadata
+          that's simply present on upserted documents, NOT declared in the schema (see next
+          bullet). This applies uniformly regardless of type.
+        - Uses the correct field types: `string` with `full_text_search={...}` (or bare `True`)
+          for FTS fields; every filterable metadata field (`string`, `string_list`, `float`,
+          `boolean` alike — `page_number`, `section`, `chapter`, `source`, or any tag/array
+          field) is NOT declared in the schema at all. Any of `add_float_field`,
+          `add_string_list_field`, `add_boolean_field`, or a plain filterable
+          `add_string_field(..., filterable=True)` appearing in the schema — e.g.
+          `add_string_field("section", filterable=True)` or `add_float_field("page_number",
+          filterable=True)` — is a FAIL: on a managed index the server rejects every one of
+          those shapes with a 400. The correct pattern is to omit all of them from the schema
+          and just include them on the documents at ingest time.
 
         SCRIPTS:
         - `extract.py` (or equivalently named): reads the PDF, emits JSONL with
@@ -1050,9 +1139,10 @@ tasks:
           parsing library (`pypdf`, `pymupdf`/`fitz`, `pdfminer.six`,
           `pdfplumber`, etc.). A script that just opens the PDF as bytes without
           extracting text is FAIL.
-        - `create_index.py`: uses `from pinecone import Pinecone` and the preview
-          API (`pc.preview.indexes.create`, `SchemaBuilder` or dict-shaped
-          schema). Schema in code must match the schema proposed in PLAN.md.
+        - `create_index.py`: uses `from pinecone import Pinecone, SchemaBuilder` (NOT
+          `pinecone.preview`, deleted in SDK 10.0.0) and `pc.indexes.create` with a
+          `SchemaBuilder` or dict-shaped schema. Schema in code must match the schema proposed
+          in PLAN.md, including omitting any plain filterable string fields from the schema.
         - `run_ingest.sh` (or equivalent ingestion step in PLAN.md): either
           invokes `scripts/ingest.py` from the skill OR provides a hand-rolled
           ingest script that uses `documents.batch_upsert` AND polls for
@@ -1082,7 +1172,7 @@ tasks:
           opaque bytes, or doesn't exist).
         - Any use of legacy APIs (`pc.Index(...)`, `pc.create_index(...)`,
           `index.upsert(vectors=...)`, `ServerlessSpec`, `BM25Encoder`,
-          `upsert_records`, `search_records`).
+          `upsert_records`, `search_records`), or `pinecone.preview` (deleted in SDK 10.0.0).
         - `full_text_searchable=True` (legacy text shape) instead of
           `full_text_search={...}`.
         - Schema has no FTS field at all (entire document treated as filterable
@@ -1091,6 +1181,9 @@ tasks:
           chunking discussion (suggests the agent didn't think about navigation
           / filtering at all).
         - Numeric fields declared as `int`.
+        - Any filterable metadata field — plain string, string_list, float, or boolean — declared
+          in the schema (no `full_text_search`) — rejected by the server on a managed index,
+          for every one of those types.
         - No ingestion step described or scripted.
       flexible:
         - "PDF parsing library is open: pypdf, pymupdf/fitz, pdfminer, pdfplumber, etc. all acceptable."
