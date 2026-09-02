@@ -199,6 +199,41 @@ print(resp.matched_records)
 
 `delete_all=True` wipes the entire namespace. Use carefully.
 
+## Namespace management
+
+Confirmed working against document-schema indexes in `2026-07` — this was **not** supported in the old preview API, which could write to a namespace but not list, describe, create, or delete one via the API.
+
+```python
+# Create explicitly (namespaces otherwise auto-create on first upsert — see below).
+ns = idx.create_namespace(name="movies-en")
+print(ns.name, ns.record_count, ns.size_bytes)
+
+# List every namespace on the index in one call.
+for page in idx.list_namespaces():
+    for ns in page.namespaces:
+        print(ns.name, ns.record_count)
+
+# Describe one namespace. Prefer list_namespaces() over repeated describe_namespace()
+# calls — describe_namespace is rate-limited per index; list_namespaces isn't.
+ns = idx.describe_namespace(name="movies-en")
+
+# Delete a namespace and everything in it.
+idx.delete_namespace(name="movies-en")
+```
+
+`create_namespace`'s optional `schema` parameter (`{"fields": {"<field>": {"filterable": True}}}`) controls *which metadata fields get indexed for filtering in that namespace specifically* — omitting it means the namespace inherits the index's own metadata-indexing configuration, which for the managed indexes this skill covers is "index everything" by default (see "Filterable metadata isn't declared in the schema at all" in SKILL.md). There's rarely a reason to pass it explicitly unless you're deliberately restricting which fields are filterable in one namespace.
+
+`__default__` is reserved — it always exists and can't be created or deleted; every namespace-taking call already defaults to it when `namespace` is omitted, but it's worth knowing when you see it show up unbidden in a `list_namespaces()` result.
+
+### `describe_index_stats` — also now works
+
+```python
+stats = idx.describe_index_stats()
+print(stats.total_vector_count, stats.namespaces)   # total record count, namespace count
+```
+
+`describe_index_stats(filter=...)` is documented as rejected on every index type (there's no operation that returns a filtered count) — call it with no arguments.
+
 ## Integrating embedding providers
 
 If your index has a dense or sparse vector field, you need embeddings. Three common paths:

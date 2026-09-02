@@ -285,6 +285,29 @@ idx.documents.delete(namespace=NAMESPACE, delete_all=True)
 
 Exactly one of `ids`, `filter`, or `delete_all` must be given. `documents.delete` returns a `DeleteDocumentsResponse` (it used to return `None`). `matched_records` is populated only for a filtered delete — it's a point-in-time count when the server accepted the request, not a promise about how many documents ultimately disappear (deletes apply asynchronously). It's `None` for an ID-list or `delete_all` delete. Deletes are permanent within the namespace.
 
+## `documents.list` — enumerate document IDs
+
+New in the graduated API — no equivalent existed under `pinecone.preview`. Lazily paginated, sorted by `_id`, and returns IDs only (no other fields):
+
+```python
+# Iterate every document ID in a namespace.
+for doc in idx.documents.list(namespace=NAMESPACE):
+    print(doc.id)
+
+# Restrict to IDs starting with a prefix — handy for the chunk-ID convention
+# in references/ingestion.md ("doc-42", "doc-42#p2", "doc-42#p3", ...).
+for doc in idx.documents.list(namespace=NAMESPACE, prefix="doc-42"):
+    print(doc.id)
+
+# Page manually instead of letting the iterator follow every page.
+for page in idx.documents.list(namespace=NAMESPACE, limit=20).pages():
+    print(len(page.items), "ids, next token:", page.pagination_token)
+```
+
+`namespace` is required. `limit` (1–100) tunes page size only — the default iterator form above still walks every page; use `.pages()` (or `itertools.islice`) if you want to stop early. `prefix` is ASCII-only, ≤512 characters. There's no `filter` — for anything beyond an ID prefix, use `documents.search` or `documents.fetch(filter=...)` instead, both of which return actual field data.
+
+Useful for confirming what's in a namespace before a `delete_all`, or auditing chunk coverage for a parent document by prefix.
+
 ## Worked cross-modal example — "pick your signal" pattern
 
 One index with two FTS text fields and one multimodal dense vector field. The dense field holds an embedding that lives in a shared text/image space (e.g. a Gemini multimodal embedding of each document's representative image). Because text and image share the space, a typed description can be embedded as text and scored against the stored image vectors.

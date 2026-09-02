@@ -1193,4 +1193,119 @@ tasks:
         - "Either SchemaBuilder chained-builder style OR raw-dict schema is acceptable."
         - "Either invoking scripts/ingest.py OR a hand-rolled batch_upsert+poll loop is acceptable. Pure single-shot upsert with no polling is not."
         - "PLAN.md, plan.md, README.md — any reasonable name for the plan file is acceptable, as long as one exists and contains the required content."
+
+  # 15. Namespace management regression probe. This capability flipped between
+  #     the old preview API and the graduated 10.0.0 API: namespace management
+  #     and describe_index_stats were NOT supported on document-schema indexes
+  #     in preview, and now they are. A model's own prior knowledge may
+  #     "remember" the old limitation — this checks whether the skill
+  #     successfully overrides that instead of the agent hedging or inventing
+  #     a workaround. Catches: claiming unsupported, hallucinated APIs,
+  #     repeated describe_namespace() calls where list_namespaces() is correct,
+  #     describe_index_stats(filter=...) (rejected on every index type).
+  - id: namespace-cleanup
+    intent: |
+      I have a Pinecone FTS index called `articles`. Before I bulk-delete an old
+      namespace, I want to see every namespace on the index and how many records
+      each one has, so I can confirm I'm about to delete the right one.
+
+      Write a Python script `cleanup.py` that:
+        1. Lists every namespace on the index with its record count.
+        2. Prints the total record count across the whole index.
+        3. Deletes the namespace named `legacy-2024`.
+
+      Don't run the script — just write it.
+    category: code-gen
+    ground_truth:
+      context_refs: ["baseline-doc.md"]
+      criteria: |
+        This is a regression probe, not a straightforward feature test — see the task comment
+        for why. PASS requires `cleanup.py` containing:
+
+        - `idx.list_namespaces()` (or `idx.list_namespaces_paginated()`) to enumerate namespaces
+          and their record counts — NOT a loop of repeated `describe_namespace()` calls.
+          `describe_namespace()` is rate-limited per index; `list_namespaces()` returns the same
+          information for every namespace in one call and isn't subject to that limit.
+        - `idx.describe_index_stats()` for the total record count, called with NO `filter`
+          argument — `describe_index_stats(filter=...)` is documented as rejected on every
+          index type; there's no operation that returns a filtered count.
+        - `idx.delete_namespace(name="legacy-2024")` (keyword `name=`, matching the real SDK
+          signature) to delete the target namespace.
+        - No claim, in code comments or accompanying chat, that namespace management or
+          `describe_index_stats` are unsupported on document-schema / FTS indexes. This is the
+          single most likely failure mode: an agent that "knows" the old preview-era limitation
+          and either refuses the task, apologizes that it can't be done, or invents a workaround
+          (e.g. searching for every document and deleting by ID) instead of using the real,
+          working, graduated API.
+
+        BONUS:
+        - A comment noting namespace management and `describe_index_stats` are newly supported
+          on document-schema indexes as of the graduated (10.0.0) API — they were not available
+          in the old `pinecone.preview` API.
+        - A comment or docstring noting `describe_namespace()` exists for inspecting a single
+          namespace but is rate-limited, which is specifically why `list_namespaces()` is the
+          right call for "show me every namespace."
+        - Prints `size_bytes` alongside `record_count` per namespace.
+
+        FAIL if:
+        - The agent claims namespace management or `describe_index_stats` aren't available for
+          a document-schema / FTS index.
+        - `describe_index_stats(filter=...)` is used.
+        - Namespace deletion is done any other way than `delete_namespace(name=...)` — e.g. by
+          enumerating and deleting every document in the namespace individually, or by
+          recreating the index.
+        - Any use of `pc.Index(...)`, `pc.create_index(...)`, or `pinecone.preview` (deleted in
+          SDK 10.0.0).
+      flexible:
+        - "list_namespaces() vs list_namespaces_paginated() — either is fine; the point is one
+          enumerating call, not N describe_namespace() calls."
+        - "Exact print formatting is open; the substance is that namespace names, their record
+          counts, and the index-wide total are all surfaced."
+
+  # 16. documents.list() probe. New capability with no preview predecessor —
+  #     tests whether the agent reaches for it rather than hand-rolling
+  #     enumeration via a documents.search() sentinel hack, which is unreliable
+  #     (misses documents whose text doesn't match the sentinel) and is exactly
+  #     the kind of workaround an agent might invent without knowing
+  #     documents.list exists.
+  - id: list-chunks-by-prefix
+    intent: |
+      My Pinecone FTS index `articles` uses the chunking convention from the skill: a
+      long article is split into `article-42` (first chunk), `article-42#p2`,
+      `article-42#p3`, etc. Namespace is `__default__`.
+
+      Before I re-ingest a fresh version of `article-42`, I want to find every existing
+      chunk ID for that article so I can delete the stale ones first.
+
+      Write `find_chunks.py` that prints every document ID belonging to `article-42`
+      (all of its chunks). Don't run it.
+    category: code-gen
+    ground_truth:
+      context_refs: ["baseline-doc.md"]
+      criteria: |
+        PASS requires `find_chunks.py` to call `idx.documents.list(namespace="__default__",
+        prefix="article-42")` (keyword args, any order) and iterate the result to print each
+        document's `.id`.
+
+        BONUS:
+        - A comment noting `documents.list` is new in the graduated API — no equivalent existed
+          under `pinecone.preview`.
+        - Uses the plain `for doc in idx.documents.list(...)` iteration form (the paginator
+          already follows every page on its own), OR, if manually paging, correctly uses
+          `.pages()` and follows the pagination token rather than assuming one page is
+          everything.
+
+        FAIL if:
+        - The agent hand-rolls enumeration via `documents.search(...)` with a sentinel query
+          instead of using `documents.list` — that ranks by a scoring signal over stored
+          fields, it does not reliably enumerate every document, and can miss chunks whose text
+          doesn't happen to match the sentinel.
+        - `prefix` is omitted and the script instead lists every document in the namespace and
+          filters client-side — works, but defeats the point of a server-side prefix filter and
+          doesn't scale to a large namespace.
+        - The agent claims there's no way to enumerate document IDs by prefix.
+        - Any use of `pc.Index(...)`, `pc.create_index(...)`, or `pinecone.preview`.
+      flexible:
+        - "Whether the agent also validates the '#p' suffix pattern client-side is a nice-to-have,
+          not required — the hard requirement is the prefix-scoped documents.list call itself."
         - "Chat may include additional commentary; we grade artifacts, not chat verbosity."
