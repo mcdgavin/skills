@@ -15,6 +15,9 @@ docs/
 # build output — rendered per-target trees
 dist/
 
+# cultivar results
+results/
+
 # Python bytecode
 __pycache__/
 *.pyc
