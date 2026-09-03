@@ -2,11 +2,8 @@
 # All tasks are code-gen: the agent writes Python files; we grade by inspection.
 # Three variants run per task: without-skill, with-docs (baseline-doc.md), with-skill.
 #
-# SDK pin note: the LIVE tasks' `setup:` blocks below pin `pinecone==10.0.0rc1` because
-# that's what's on PyPI while 10.0.0 final hasn't shipped yet. The skill itself (SKILL.md,
-# scripts/ingest.py) is written against the final `pinecone==10.0.0` pin. Bump every
-# `pinecone==10.0.0rc1` occurrence in this file to `pinecone==10.0.0` once the stable
-# release is out, before committing further changes here.
+# SDK pin: the LIVE tasks' `setup:` blocks install `pinecone==10.0.0`, matching the
+# pin in the skill's own scripts/ingest.py. Keep the two in step.
 
 tasks:
 
@@ -560,15 +557,19 @@ tasks:
         - "Sentinel field can be body, intro, or bird_name — any FTS field on the schema is acceptable."
         - "uv run --script vs direct execution via shebang vs python invocation are all acceptable invocation forms."
         - "Path to ingest.py can be relative or absolute; tilde- or skill-relative paths are fine."
+        - "Extra flags beyond the three required ones are fine as long as ingest.py defines
+           them. Its full option set is --data/-d, --index/-i, --namespace, --batch-size/-b,
+           --poll-deadline, --sentinel-field/-f, --sentinel/-s. Passing --sentinel explicitly
+           to avoid a stopword sentinel is good practice, not a deviation — do not FAIL for it."
 
   # 10. LIVE gut check — does the agent actually create an index against real
   #     Pinecone? Exercises the whole stack: sandbox secret plumbing,
-  #     pinecone==10.0.0rc1 install, control-plane connectivity, polling, teardown.
+  #     pinecone==10.0.0 install, control-plane connectivity, polling, teardown.
   #     If this PASSes, the live-execution wiring is ready for harder tasks
   #     (ingest + query). Sequential only (--parallel 1) — uses a fixed name.
   - id: create-index-live
     setup: |
-      pip install -q pinecone==10.0.0rc1
+      pip install -q pinecone==10.0.0
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
@@ -650,7 +651,7 @@ tasks:
   - id: ingest-into-live-index
     setup: |
       set -e   # any failed step aborts setup loudly; framework will see non-zero exit
-      pip install -q pinecone==10.0.0rc1
+      pip install -q pinecone==10.0.0
       # Idempotent cleanup
       python3 -c "
       from pinecone import Pinecone
@@ -769,7 +770,7 @@ tasks:
   - id: query-live-index
     setup: |
       set -e
-      pip install -q pinecone==10.0.0rc1
+      pip install -q pinecone==10.0.0
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()
@@ -893,7 +894,7 @@ tasks:
   - id: onboard-live-end-to-end
     setup: |
       set -e
-      pip install -q pinecone==10.0.0rc1
+      pip install -q pinecone==10.0.0
       python3 -c "
       from pinecone import Pinecone
       pc = Pinecone()

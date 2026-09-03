@@ -3,11 +3,9 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #   "typer>=0.12",
-#   "pinecone==10.0.0rc1",
+#   "pinecone==10.0.0",
 # ]
 # ///
-# TEMPORARY: pinned to the 10.0.0rc1 release candidate because 10.0.0 final
-# isn't on PyPI yet. Switch this pin back to pinecone==10.0.0 before committing.
 """Ingest a JSONL file into a Pinecone FTS index — safely.
 
 A bare-LLM ingest path skips three things and breaks in three different ways:
