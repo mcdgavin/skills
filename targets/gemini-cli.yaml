@@ -1,0 +1,85 @@
+# Build manifest — Gemini CLI extension
+#
+# Consumed by tools/build.py, which renders skills/ -> dist/gemini-cli/.
+# Derived from the observed state of the live target repo on 2026-09-09. Until
+# this manifest existed the extension carried hand-copied skills and received no
+# fixes from base; see the "Known deltas" section of targets/README.md.
+
+repo: pinecone-io/gemini-cli-extension
+skills_path: skills
+
+# The extension namespaces skills itself, so the prefix is redundant on disk and
+# in `name:`. The live repo kept `pinecone-docs/` as a one-off because `docs`
+# alone read as generic; base cannot express a per-slug exception, and `name:`
+# is what Gemini routes on, so this manifest renders it as `docs/` like the
+# Claude Code and Codex targets do. GEMINI.md's skill table needs the same rename.
+dir_name: "{slug}"
+skill_name: "{slug}"
+cross_reference: "{slug}"
+
+source_tag: gemini_cli
+ide_source: gemini-cli
+
+# Seven of nine. The live extension never shipped n8n or full-text-search.
+include:
+  - assistant
+  - cli
+  - docs
+  - help
+  - mcp
+  - query
+  - quickstart
+
+# Gemini CLI documents exactly two frontmatter keys, name and description, and
+# says nothing about how unknown keys are treated. Base carries argument-hint on
+# cli and query; strip it rather than rely on undocumented tolerance.
+frontmatter: {}
+drop_frontmatter:
+  - argument-hint
+
+# Per-target wording for the `<<name>>` markers in base. See targets/README.md.
+#
+# The extension declares PINECONE_API_KEY as a setting for its MCP server, but the
+# bundled scripts read the shell, so users need both. Gemini CLI declares no slash
+# commands; the live scripts advertised `/pinecone:assistant-*` commands that never
+# existed here, so the next-step snippets name the scripts you can actually run.
+snippets:
+  api_key_setup: |
+    - Set it in your Gemini CLI settings for the Pinecone MCP server (the extension
+      declares it as a setting), and also run `export PINECONE_API_KEY="your-key"` in
+      your terminal so the bundled scripts can read it.
+
+  next_after_create: |
+    1. Upload files: [cyan]uv run upload.py --assistant {name} --source PATH[/cyan]
+    2. Chat: [cyan]uv run chat.py --assistant {name} --message "YOUR QUESTION"[/cyan]
+    3. Get context: [cyan]uv run context.py --assistant {name} --query "SEARCH TEXT"[/cyan]
+
+  next_create_first: "[cyan]uv run create.py --name ASSISTANT_NAME[/cyan]"
+
+  next_commands: |
+    • List with files: [cyan]uv run list.py --files[/cyan]
+    • Chat: [cyan]uv run chat.py --assistant NAME --message "YOUR QUESTION"[/cyan]
+    • Upload: [cyan]uv run upload.py --assistant NAME --source PATH[/cyan]
+    • Context: [cyan]uv run context.py --assistant NAME --query "SEARCH TEXT"[/cyan]
+
+  next_after_upload: |
+    • Chat: [cyan]uv run chat.py --assistant {assistant} --message "YOUR QUESTION"[/cyan]
+    • Context: [cyan]uv run context.py --assistant {assistant} --query "SEARCH TEXT"[/cyan]
+
+  next_after_context: |
+    • Ask a question: [cyan]uv run chat.py --assistant {assistant} --message "YOUR QUESTION"[/cyan]
+    • Upload more files: [cyan]uv run upload.py --assistant {assistant} --source PATH[/cyan]
+
+  next_chat_fallback: 'uv run chat.py --assistant {assistant} --message \"{query}\"'
+
+  # No structured-choice tool here, so say what to do instead.
+  clarify_style: >
+    Whenever this skill asks the user to choose between options, confirm a
+    destructive step, or pick from a list, ask in plain prose, list the options,
+    and wait for their answer before continuing.
+
+  # Gemini CLI routes to skills from intent and has no slash form. The live help
+  # skill already said this.
+  invoke_any_skill: >
+    Gemini CLI activates skills from your intent. If routing misses, ask for one by
+    name, for example "Use the quickstart skill".

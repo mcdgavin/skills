@@ -1,0 +1,86 @@
+# Build manifest — Codex plugin
+#
+# Consumed by tools/build.py, which renders skills/ -> dist/codex/.
+# Derived from the observed state of the live target repo on 2026-09-09. Until
+# this manifest existed the plugin carried hand-copied skills and received no
+# fixes from base; see the "Known deltas" section of targets/README.md.
+
+repo: pinecone-io/pinecone-codex-plugin
+skills_path: skills
+
+# The plugin manifest namespaces skills under `pinecone`, so bare slugs on disk
+# and in `name:`, matching the live repo.
+dir_name: "{slug}"
+skill_name: "{slug}"
+
+# The live repo's (retired) contextualize prompt mandated `pinecone:<skill>` in
+# prose, and that is what the live files use. Its README tells users to invoke
+# skills as `$<skill>`. Kept the prose form to match live content; switching is a
+# one-line change here if maintainers prefer the README form.
+cross_reference: "pinecone:{slug}"
+
+source_tag: codex_plugin
+
+# The live repo stamped `claude-code-plugin` here, copied from the Claude plugin,
+# so assistants created from Codex were attributed to Claude Code.
+ide_source: codex-plugin
+
+# Eight of nine. The live plugin never shipped n8n.
+include:
+  - assistant
+  - cli
+  - docs
+  - full-text-search
+  - help
+  - mcp
+  - query
+  - quickstart
+
+# Codex skills carry no allowed-tools; argument-hint is passed through, matching
+# the live cli and query skills.
+frontmatter: {}
+
+# Per-target wording for the `<<name>>` markers in base. See targets/README.md.
+#
+# Codex reads the shell for both the MCP server and the scripts. It declares no
+# slash commands; the live scripts advertised `/pinecone:assistant-*` commands
+# that never existed here, so the next-step snippets name the scripts to run.
+snippets:
+  api_key_setup: |
+    - Run `export PINECONE_API_KEY="your-key"` in your terminal. Codex reads your
+      shell environment for both the MCP server and the bundled scripts.
+
+  next_after_create: |
+    1. Upload files: [cyan]uv run upload.py --assistant {name} --source PATH[/cyan]
+    2. Chat: [cyan]uv run chat.py --assistant {name} --message "YOUR QUESTION"[/cyan]
+    3. Get context: [cyan]uv run context.py --assistant {name} --query "SEARCH TEXT"[/cyan]
+
+  next_create_first: "[cyan]uv run create.py --name ASSISTANT_NAME[/cyan]"
+
+  next_commands: |
+    • List with files: [cyan]uv run list.py --files[/cyan]
+    • Chat: [cyan]uv run chat.py --assistant NAME --message "YOUR QUESTION"[/cyan]
+    • Upload: [cyan]uv run upload.py --assistant NAME --source PATH[/cyan]
+    • Context: [cyan]uv run context.py --assistant NAME --query "SEARCH TEXT"[/cyan]
+
+  next_after_upload: |
+    • Chat: [cyan]uv run chat.py --assistant {assistant} --message "YOUR QUESTION"[/cyan]
+    • Context: [cyan]uv run context.py --assistant {assistant} --query "SEARCH TEXT"[/cyan]
+
+  next_after_context: |
+    • Ask a question: [cyan]uv run chat.py --assistant {assistant} --message "YOUR QUESTION"[/cyan]
+    • Upload more files: [cyan]uv run upload.py --assistant {assistant} --source PATH[/cyan]
+
+  next_chat_fallback: 'uv run chat.py --assistant {assistant} --message \"{query}\"'
+
+  # No structured-choice tool here, so say what to do instead.
+  clarify_style: >
+    Whenever this skill asks the user to choose between options, confirm a
+    destructive step, or pick from a list, ask in plain prose, list the options,
+    and wait for their answer before continuing.
+
+  # From the live README: skills are invoked by name with `$<skill>` or via
+  # `@pinecone`.
+  invoke_any_skill: >
+    Invoke any skill from Codex with `$<skill-name>` — for example `$quickstart` or
+    `$cli` — or mention `@pinecone` and describe what you want.

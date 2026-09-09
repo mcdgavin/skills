@@ -79,6 +79,15 @@ def load_manifest(target: str) -> dict[str, Any]:
     unknown = set(m["frontmatter"]) - set(m["include"])
     if unknown:
         raise ValueError(f"{target}.yaml has frontmatter for non-included slugs: {sorted(unknown)}")
+    # Keys a target strips from every rendered SKILL.md. `name` and `description`
+    # are required by the Agent Skills spec and cannot be dropped.
+    drop = m.get("drop_frontmatter") or []
+    if not isinstance(drop, list):
+        raise ValueError(f"{target}.yaml: drop_frontmatter must be a list")
+    bad = [k for k in drop if k not in FRONTMATTER_ORDER or k in ("name", "description")]
+    if bad:
+        raise ValueError(f"{target}.yaml: drop_frontmatter cannot drop {bad}")
+    m["drop_frontmatter"] = drop
     return m
 
 
@@ -246,6 +255,8 @@ def render_skill_md(text: str, slug: str, manifest: dict[str, Any], path: Path) 
     extra = (manifest["frontmatter"].get(slug) or {})
     for key, value in extra.items():
         fm[key] = value
+    for key in manifest.get("drop_frontmatter") or []:
+        fm.pop(key, None)
 
     # Cross-references appear in the description as well as the body.
     if "description" in fm:

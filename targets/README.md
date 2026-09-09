@@ -22,6 +22,7 @@ gone as of 2026-08-12; nothing rewrites skills after they leave this repo.
 | `snippets` | Wording for the `<<name>>` markers in base. See "Snippets" below. |
 | `include` | Slugs to render. Explicit, so adding a skill to base does not silently publish it everywhere. |
 | `frontmatter` | Per-slug keys this target adds. Emitted after `argument-hint`. |
+| `drop_frontmatter` | Optional. Keys stripped from every rendered `SKILL.md`. Only `argument-hint` and `allowed-tools` may be listed; `name` and `description` are required by the Agent Skills spec. |
 
 ## Frontmatter contract
 
@@ -175,3 +176,26 @@ is reconciliation work, not build work.
   `rsync --delete` will remove them. They are vestigial — every directory holding
   one also holds real files — but it is a deletion, so it should be a deliberate
   call rather than a surprise in the first sync PR.
+
+### gemini-cli and codex, added 2026-09
+
+Both targets were hand-copied from the Claude plugin and never synced, so their
+first sync is a migration. Reconciled against live `main` on 2026-09-09:
+
+- **Both ship the SDK 8 assistant scripts** that claude-code-plugin#37 replaced in
+  June. `pinecone>=8.0.0` now resolves to 10.0.0 and `chat.py` fails at import.
+  The sync overwrites all six scripts.
+- **Both advertise `/pinecone:assistant-*` slash commands** in script output. Neither
+  product has them. The `next_*` snippets name the scripts instead, as cursor does.
+- **codex's `full-text-search` targets `pinecone.preview`** and pins 9.0.0; base
+  moved to 10.0.0 on 2026-09-03. About 600 lines change.
+- **codex stamped `agentic-ide-source: claude-code-plugin`.** Fixed by `ide_source`.
+- **gemini-cli keeps `pinecone-docs/` on disk.** `dir_name` is one template, so the
+  render produces `docs/`. `GEMINI.md`'s skill table needs the matching rename.
+- **gemini-cli carries `argument-hint` nowhere**, and Gemini documents only `name`
+  and `description`. `drop_frontmatter` strips it from cli and query.
+- **gemini-cli carries one `.gitkeep`** that `rsync --delete` removes. Same shape as
+  cursor's.
+- Both repos still contain the retired `contextualize` workflow, gated on
+  `sync/skills-`. It never fires against `sync/skills` and should be deleted as it
+  was for the other two targets.

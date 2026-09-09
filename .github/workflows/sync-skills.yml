@@ -16,6 +16,8 @@ on:
           - all
           - pinecone-io/pinecone-claude-code-plugin
           - pinecone-io/pinecone-cursor-plugin
+          - pinecone-io/gemini-cli-extension
+          - pinecone-io/pinecone-codex-plugin
         default: all
       dry_run:
         description: 'Build, reconcile, and print the plan without opening a PR'
@@ -48,6 +50,12 @@ jobs:
             skills_path: skills
           - name: cursor
             repo: pinecone-io/pinecone-cursor-plugin
+            skills_path: skills
+          - name: gemini-cli
+            repo: pinecone-io/gemini-cli-extension
+            skills_path: skills
+          - name: codex
+            repo: pinecone-io/pinecone-codex-plugin
             skills_path: skills
 
     name: Sync → ${{ matrix.target.repo }}
@@ -140,8 +148,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
 
-      # --delete verified safe for these two targets only. Re-run reconcile.py before
-      # adding a third.
+      # --delete reconciled against all four targets before each was added. Re-run
+      # reconcile.py before adding another; EXTRA files are deletions.
       - name: Sync rendered tree into target
         if: steps.gate.outputs.skip == 'false'
         env:

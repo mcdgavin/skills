@@ -271,6 +271,20 @@ class TestFrontmatter:
         with pytest.raises(ValueError, match="must open with"):
             build.render_skill_md("no frontmatter here\n", "help", CLAUDE, Path("x"))
 
+    def test_drop_frontmatter_removes_key(self):
+        """Gemini CLI documents only name and description; base carries argument-hint
+        on cli and query, so a target must be able to strip it."""
+        src = "---\nname: pinecone-cli\ndescription: D\nargument-hint: install | auth\n---\nB\n"
+        m = dict(CLAUDE, skill_name="{slug}", frontmatter={}, drop_frontmatter=["argument-hint"])
+        out = build.render_skill_md(src, "cli", m, Path("x"))
+        assert out.startswith("---\nname: cli\ndescription: D\n---\n")
+        assert "argument-hint" not in out
+
+    def test_drop_frontmatter_is_a_noop_when_key_absent(self):
+        m = dict(CLAUDE, skill_name="{slug}", frontmatter={}, drop_frontmatter=["argument-hint"])
+        out = build.render_skill_md(self.BASE, "quickstart", m, Path("x"))
+        assert out.startswith("---\nname: quickstart\ndescription: Do a thing.\n---\n")
+
 
 class TestFileDispatch:
     def test_py_gets_source_tag_only_not_cross_refs(self):
