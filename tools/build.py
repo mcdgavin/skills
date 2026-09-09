@@ -66,16 +66,14 @@ FRONTMATTER_ORDER = ["name", "description", "argument-hint", "allowed-tools"]
 # manifest
 # --------------------------------------------------------------------------- #
 
-def load_manifest(target: str) -> dict[str, Any]:
-    path = TARGETS_DIR / f"{target}.yaml"
-    if not path.exists():
-        raise typer.BadParameter(f"no manifest at {path.relative_to(REPO)}")
-    m = yaml.safe_load(path.read_text())
+def validate_manifest(m: dict[str, Any], target: str) -> dict[str, Any]:
+    """Normalise and validate a loaded manifest. Pure, so it is testable without
+    a file on disk. Returns the same dict, mutated in place."""
     for key in ("repo", "skills_path", "dir_name", "skill_name", "cross_reference",
                 "source_tag", "ide_source", "include"):
         if key not in m:
             raise ValueError(f"{target}.yaml is missing required key: {key}")
-    m.setdefault("frontmatter", {}) or m.__setitem__("frontmatter", m.get("frontmatter") or {})
+    m["frontmatter"] = m.get("frontmatter") or {}
     unknown = set(m["frontmatter"]) - set(m["include"])
     if unknown:
         raise ValueError(f"{target}.yaml has frontmatter for non-included slugs: {sorted(unknown)}")
@@ -87,8 +85,27 @@ def load_manifest(target: str) -> dict[str, Any]:
     bad = [k for k in drop if k not in FRONTMATTER_ORDER or k in ("name", "description")]
     if bad:
         raise ValueError(f"{target}.yaml: drop_frontmatter cannot drop {bad}")
+    # Adding a key per slug and dropping it globally would discard both values
+    # without a trace. Refuse rather than let the last rule silently win.
+    added = {k for per_slug in m["frontmatter"].values() for k in (per_slug or {})}
+    clash = sorted(added & set(drop))
+    if clash:
+        raise ValueError(f"{target}.yaml: {clash} appear in both frontmatter and drop_frontmatter")
     m["drop_frontmatter"] = drop
     return m
+
+
+def load_manifest(target: str) -> dict[str, Any]:
+    path = TARGETS_DIR / f"{target}.yaml"
+    if not path.exists():
+        raise typer.BadParameter(f"no manifest at {path.relative_to(REPO)}")
+    return validate_manifest(yaml.safe_load(path.read_text()), target)
+
+
+def base_slugs() -> list[str]:
+    """Every skill in base, by slug. The universe `include` selects from."""
+    return sorted(p.name[len(BASE_PREFIX):] for p in SKILLS_DIR.iterdir()
+                  if p.is_dir() and p.name.startswith(BASE_PREFIX))
 
 
 def available_targets() -> list[str]:
@@ -202,16 +219,33 @@ def fill_snippets(text: str, manifest: dict[str, Any], path: Path) -> str:
     """
     snippets = manifest.get("snippets") or {}
 
-    def repl(match: re.Match[str]) -> str:
-        name = match.group(1)
+    def value(name: str) -> str:
         if name not in snippets:
             raise ValueError(
                 f"{path}: no snippet {name!r} for this target. Define it in "
                 f"targets/*.yaml for every target, or remove the marker from base."
             )
-        return str(snippets[name]).strip()
+        return str(snippets[name] or "").strip()
 
-    return SNIPPET_RE.sub(repl, text)
+    # A marker that is the only thing on its line, filled with an empty snippet,
+    # takes the whole line with it. That is how a target omits a table row or a
+    # routing bullet for a skill it does not ship, without leaving a blank cell or
+    # a broken table behind. One trailing blank line is absorbed so a removed
+    # paragraph does not leave a double gap.
+    out: list[str] = []
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        whole = SNIPPET_RE.fullmatch(line.strip())
+        if whole and value(whole.group(1)) == "":
+            if out and out[-1] == "" and i + 1 < len(lines) and lines[i + 1] == "":
+                i += 1
+            i += 1
+            continue
+        out.append(SNIPPET_RE.sub(lambda m: value(m.group(1)), line))
+        i += 1
+    return "\n".join(out)
 
 
 def split_frontmatter(text: str, path: Path) -> tuple[dict[str, str], str]:
@@ -373,6 +407,44 @@ def check_identity_target(target: str, out_root: Path | None = None) -> list[str
     return problems
 
 
+def find_excluded_references(text: str, manifest: dict[str, Any], all_slugs: list[str]) -> list[tuple[int, str]]:
+    """(line number, slug) for every reference to a base skill this target does
+    not include. Uses the same bounded pattern as cross-reference rewriting, so a
+    URL or package name that merely contains the text is not a hit."""
+    excluded = [s for s in all_slugs if s not in manifest["include"]]
+    if not excluded:
+        return []
+    pattern = cross_reference_pattern(excluded)
+    hits: list[tuple[int, str]] = []
+    for n, line in enumerate(text.split("\n"), 1):
+        for m in pattern.finditer(line):
+            hits.append((n, m.group(0)[len(BASE_PREFIX):]))
+    return hits
+
+
+def check_excluded_references(target: str, out_root: Path | None = None) -> list[str]:
+    """Rendered content must not point at a skill the target does not ship.
+
+    The cross-reference rewrite only knows about included slugs, so a table row or
+    routing line for an excluded skill passes through in base form and tells the
+    user to invoke something that does not exist there. The help skill is the
+    obvious case; base handles it with markers filled empty per target. This check
+    is what fails when a new reference sneaks in anywhere else.
+    """
+    manifest = load_manifest(target)
+    out = (out_root or DIST_DIR) / target / manifest["skills_path"]
+    problems: list[str] = []
+    for path in sorted(out.rglob("*")):
+        if path.is_dir() or path.suffix not in (".md", ".py"):
+            continue
+        for n, slug in find_excluded_references(path.read_text(), manifest, base_slugs()):
+            problems.append(
+                f"{target}: {path.relative_to(out)}:{n} references {BASE_PREFIX}{slug}, "
+                f"which this target does not include"
+            )
+    return problems
+
+
 def check_no_neutral_tags(target: str, out_root: Path | None = None) -> list[str]:
     """No rendered output may still carry a neutral per-target marker.
 
@@ -480,6 +552,7 @@ def main(
         problems += check_no_neutral_tags(t, out_root)
         problems += check_identity_target(t, out_root)
         problems += check_snippets(t)
+        problems += check_excluded_references(t, out_root)
         problems += check_python_syntax(t, out_root)
         if check:
             import tempfile

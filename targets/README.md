@@ -31,7 +31,7 @@ Base uses exactly four keys, and the build must emit them in this order:
 ```
 name:            # rewritten per skill_name
 description:     # passed through unchanged
-argument-hint:   # passed through unchanged; only cli and query have one
+argument-hint:   # passed through unless the manifest lists it in drop_frontmatter; only cli and query have one
 allowed-tools:   # added from the manifest; base has none
 ```
 
@@ -116,6 +116,11 @@ snippets:
   text passes through the same guards as base content — write `pinecone-cli` in a
   snippet and it retargets correctly.
 - Trailing newlines are stripped, so `|` block scalars sit cleanly inline.
+- An empty snippet (`""`) on a line that holds nothing but the marker removes
+  the whole line, and one adjacent blank line with it. This is how a target drops
+  a table row or a routing bullet for a skill it does not ship.
+- A key may not appear in both `frontmatter` (added per slug) and
+  `drop_frontmatter`; the build refuses rather than let one rule silently win.
 
 ### Writing snippets that land inside Python
 
@@ -155,7 +160,11 @@ legitimately *ahead* of base: `create.py` in the Claude plugin was, for months.
    exact regression test. It replaces paid evals for that target.
 2. **Idempotence.** Building twice produces identical bytes.
 3. **Round-trip on names.** Every rendered `name:` matches the target's live
-   value for all nine skills.
+   value for every included skill. The one deliberate exception is gemini-cli's
+   `docs`, recorded under "Known deltas".
+4. **No reference to a skill the target does not ship.** `check_excluded_references`
+   fails on any `pinecone-<slug>` for a slug outside `include`, in every rendered
+   `.md` and `.py`.
 
 ## Known deltas
 
@@ -196,6 +205,14 @@ first sync is a migration. Reconciled against live `main` on 2026-09-09:
   and `description`. `drop_frontmatter` strips it from cli and query.
 - **gemini-cli carries one `.gitkeep`** that `rsync --delete` removes. Same shape as
   cursor's.
+- **The help skill lists all nine base skills.** gemini-cli and codex fill the
+  row and routing markers for skills they do not ship with `""`, which removes
+  those lines; the excluded-reference check fails the build if a reference to an
+  unshipped skill survives anywhere else.
+- **gemini-cli's live help said the MCP server was already installed** by the
+  extension, where base linked a setup guide. `<<mcp_server_status>>` carries the
+  per-target wording; the other three targets keep the link, so nothing changes
+  for them.
 - Both repos still contain the retired `contextualize` workflow, gated on
   `sync/skills-`. It never fires against `sync/skills` and should be deleted as it
   was for the other two targets.

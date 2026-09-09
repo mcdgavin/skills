@@ -3,8 +3,11 @@ name: Sync Skills to Plugin Repos
 # Renders skills/ through tools/build.py and rsyncs the result into each plugin
 # repo, opening one PR per target. Dispatch-only.
 #
-# Branch has NO suffix: contextualize-skills.yml in both plugin repos gates on
-# `sync/skills-` (trailing hyphen), so this name deliberately does not match.
+# Branch has NO suffix: the retired contextualize workflows still present in
+# some target repos (contextualize-skills.yml in claude-code and codex,
+# contextualize.yml in gemini-cli) gate on `sync/skills-` (trailing hyphen), so
+# this name deliberately does not match. Delete those workflows as each target
+# is cut over.
 
 on:
   workflow_dispatch:
@@ -45,18 +48,27 @@ jobs:
           # `name` is the manifest stem in targets/. `skills_path` must match the
           # manifest's own skills_path — the guard step below fails loudly if it
           # drifts, rather than syncing into the wrong directory.
+          # `enabled` gates the `all` dispatch. A target that is not yet enabled
+          # only runs when selected by name, so a routine "all" cannot open a
+          # migration PR into a repo nobody has decided to cut over, and cannot go
+          # red on a repo PLUGIN_SYNC_PAT cannot write to yet. Flip to true once
+          # the PAT covers the repo and the first sync has been reviewed.
           - name: claude-code
             repo: pinecone-io/pinecone-claude-code-plugin
             skills_path: skills
+            enabled: true
           - name: cursor
             repo: pinecone-io/pinecone-cursor-plugin
             skills_path: skills
+            enabled: true
           - name: gemini-cli
             repo: pinecone-io/gemini-cli-extension
             skills_path: skills
+            enabled: false
           - name: codex
             repo: pinecone-io/pinecone-codex-plugin
             skills_path: skills
+            enabled: false
 
     name: Sync → ${{ matrix.target.repo }}
 
@@ -66,9 +78,15 @@ jobs:
         env:
           SELECTED: ${{ inputs.target_repo }}
           THIS_REPO: ${{ matrix.target.repo }}
+          ENABLED: ${{ matrix.target.enabled }}
         run: |
-          if [[ "$SELECTED" == "all" || "$SELECTED" == "$THIS_REPO" ]]; then
+          if [[ "$SELECTED" == "$THIS_REPO" ]]; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$SELECTED" == "all" && "$ENABLED" == "true" ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$SELECTED" == "all" ]]; then
+            echo "Skipping $THIS_REPO: not enabled for 'all'; select it by name to sync it"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "Skipping $THIS_REPO (selected: $SELECTED)"
             echo "skip=true" >> "$GITHUB_OUTPUT"

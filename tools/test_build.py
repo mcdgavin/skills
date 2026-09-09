@@ -286,6 +286,67 @@ class TestFrontmatter:
         assert out.startswith("---\nname: quickstart\ndescription: Do a thing.\n---\n")
 
 
+class TestValidateManifest:
+    BASE = {"repo": "o/r", "skills_path": "skills", "dir_name": "{slug}", "skill_name": "{slug}",
+            "cross_reference": "{slug}", "source_tag": "t", "ide_source": "t", "include": SLUGS}
+
+    def test_drop_must_be_a_list(self):
+        with pytest.raises(ValueError, match="must be a list"):
+            build.validate_manifest(dict(self.BASE, drop_frontmatter="argument-hint"), "x")
+
+    def test_cannot_drop_required_keys(self):
+        with pytest.raises(ValueError, match="cannot drop"):
+            build.validate_manifest(dict(self.BASE, drop_frontmatter=["name"]), "x")
+
+    def test_cannot_drop_unknown_key(self):
+        with pytest.raises(ValueError, match="cannot drop"):
+            build.validate_manifest(dict(self.BASE, drop_frontmatter=["mystery"]), "x")
+
+    def test_add_and_drop_same_key_is_an_error(self):
+        """Otherwise both the base value and the manifest's are discarded silently."""
+        m = dict(self.BASE, frontmatter={"cli": {"argument-hint": "x"}}, drop_frontmatter=["argument-hint"])
+        with pytest.raises(ValueError, match="both frontmatter and drop_frontmatter"):
+            build.validate_manifest(m, "x")
+
+    def test_valid_drop_is_normalised(self):
+        m = build.validate_manifest(dict(self.BASE), "x")
+        assert m["drop_frontmatter"] == [] and m["frontmatter"] == {}
+
+
+class TestEmptySnippetRemovesLine:
+    M = {"snippets": {"row": "", "cell": "", "text": "hello"}}
+
+    def test_marker_only_line_is_removed(self):
+        src = "| a |\n<<row>>\n| b |\n"
+        assert build.fill_snippets(src, self.M, Path("x")) == "| a |\n| b |\n"
+
+    def test_removed_paragraph_takes_one_blank_with_it(self):
+        src = "para\n\n<<row>>\n\nnext\n"
+        assert build.fill_snippets(src, self.M, Path("x")) == "para\n\nnext\n"
+
+    def test_inline_empty_snippet_leaves_the_line(self):
+        assert build.fill_snippets("| x | <<cell>> |\n", self.M, Path("x")) == "| x |  |\n"
+
+    def test_non_empty_still_substitutes(self):
+        assert build.fill_snippets("say <<text>>\n", self.M, Path("x")) == "say hello\n"
+
+
+class TestExcludedReferences:
+    SEVEN = [s for s in SLUGS if s not in ("full-text-search", "n8n")]
+    M = {"include": SEVEN}
+
+    def test_reference_to_excluded_skill_is_found(self):
+        hits = build.find_excluded_references("see `pinecone-n8n` and pinecone-full-text-search\n", self.M, SLUGS)
+        assert hits == [(1, "n8n"), (1, "full-text-search")]
+
+    def test_included_and_lookalikes_are_ignored(self):
+        text = "`pinecone-cli` https://github.com/pinecone-io/skills @pinecone-database/n8n-nodes-pinecone-assistant\n"
+        assert build.find_excluded_references(text, self.M, SLUGS) == []
+
+    def test_nothing_excluded_means_nothing_found(self):
+        assert build.find_excluded_references("pinecone-n8n\n", {"include": SLUGS}, SLUGS) == []
+
+
 class TestFileDispatch:
     def test_py_gets_source_tag_only_not_cross_refs(self):
         text = '# see pinecone-assistant\nsource_tag="pinecone_skills:cli"\n'

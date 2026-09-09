@@ -45,9 +45,11 @@ drop_frontmatter:
 # existed here, so the next-step snippets name the scripts you can actually run.
 snippets:
   api_key_setup: |
-    - Set it in your Gemini CLI settings for the Pinecone MCP server (the extension
-      declares it as a setting), and also run `export PINECONE_API_KEY="your-key"` in
-      your terminal so the bundled scripts can read it.
+    - Run `gemini extensions config pinecone` and set the Pinecone API Key. The
+      extension passes only its declared settings to the bundled MCP server; it does
+      not inherit your shell environment.
+    - Also run `export PINECONE_API_KEY="your-key"` in your terminal so the bundled
+      scripts, which do run in your shell, can read it.
 
   next_after_create: |
     1. Upload files: [cyan]uv run upload.py --assistant {name} --source PATH[/cyan]
@@ -83,3 +85,13 @@ snippets:
   invoke_any_skill: >
     Gemini CLI activates skills from your intent. If routing misses, ask for one by
     name, for example "Use the quickstart skill".
+
+  # The help skill lists every base skill. A target that does not ship one fills
+  # its row and routing line with an empty string, which removes the line.
+  help_row_full_text_search: ""
+  help_route_full_text_search: ""
+  help_row_n8n: ""
+  help_route_n8n: ""
+
+  # Third column of the help table's MCP row.
+  mcp_server_status: "Already installed for you in Gemini CLI!"

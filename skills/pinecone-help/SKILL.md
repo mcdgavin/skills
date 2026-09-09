@@ -25,7 +25,7 @@ Here's everything you need to get started and a summary of all available skills.
 
 | Tool | What it enables | Install |
 |---|---|---|
-| **Pinecone MCP server** | Use Pinecone directly inside your AI agent/IDE without writing code | [Setup guide](https://docs.pinecone.io/guides/operations/mcp-server#tools) |
+| **Pinecone MCP server** | Use Pinecone directly inside your AI agent/IDE without writing code | <<mcp_server_status>> |
 | **Pinecone CLI (`pc`)** | Manage all index types from the terminal, batch operations, backups, CI/CD | `brew tap pinecone-io/tap && brew install pinecone-io/tap/pinecone` |
 | **uv** | Run the packaged Python scripts included in these skills | [Install uv](https://docs.astral.sh/uv/getting-started/installation/) |
 
@@ -40,9 +40,9 @@ Here's everything you need to get started and a summary of all available skills.
 | `pinecone-cli` | Use the Pinecone CLI (`pc`) for terminal-based index and vector management |
 | `pinecone-assistant` | Create, manage, and chat with Pinecone Assistants for document Q&A with citations |
 | `pinecone-mcp` | Reference for all Pinecone MCP server tools and their parameters |
-| `pinecone-full-text-search` | Build a full-text-search index — schema design, safe bulk ingestion, and query construction (`text` / `query_string` / dense / sparse scoring with text-match and metadata filters). **Document-schema API (`2026-07`); requires `pinecone` Python SDK ≥ 10.0.0.** |
+<<help_row_full_text_search>>
 | `pinecone-docs` | Curated links to official Pinecone documentation, organized by topic |
-| `pinecone-n8n` | Build n8n workflows with the Pinecone Assistant node or Pinecone Vector Store node, including best practices and full workflow JSON generation |
+<<help_row_n8n>>
 
 ---
 
@@ -56,9 +56,9 @@ Here's everything you need to get started and a summary of all available skills.
 
 **Working with documents and Q&A?** → `pinecone-assistant`
 
-**Building a full-text search index (BM25-style keyword/phrase matching, optionally combined with dense or sparse vectors)?** → `pinecone-full-text-search` (document-schema API, needs `pinecone` Python SDK ≥ 10.0.0)
+<<help_route_full_text_search>>
 
-**Building an n8n workflow with Pinecone (RAG pipeline, chat with docs)?** → `pinecone-n8n`
+<<help_route_n8n>>
 
 **Need to manage indexes, bulk upload vectors, or automate workflows?** → `pinecone-cli`
 
